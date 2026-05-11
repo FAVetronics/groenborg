@@ -45,9 +45,8 @@ if SIMULATION: kernelVer = "sim"  #
 else: kernelVer = "6.1"           #
 
 
-# "host" is only used for the coin acceptor and for returning logfiles - other messages are passed through Azure MQTT
-#DEFAULT_HOST = "https://comforttanpay.com/" #Production server - "connectionString":"HostName=GronborgIoTHub001.azure-devices.net;DeviceId=Location0032;SharedAccessKey=MK0H6Y595bj+LKC1mEL9tOxhMWP23WmH4gq5NSdU0vg="
-DEFAULT_HOST = "http://comforttan-dev.vsrv111.vmc1.systemina.dk/" #Staging server - "connectionString":"HostName=GronborgIoTHubTEST.azure-devices.net;DeviceId=Location0032;SharedAccessKey=yWo84DhWk1eLow4QCGeoh57HQkkLKGYp4AIoTK29yhw="
+from dotenv import load_dotenv
+load_dotenv()
 DEVELOPMENT_LOCATION = "32"
 
 
@@ -111,7 +110,7 @@ with open(RPi_HOME_FOLDER+'settings.ini') as json_file:
     elif 'lokation' in data:  locationID = data['lokation'].strip()
     else:  locationID = DEVELOPMENT_LOCATION
     if 'host' in data: host = data['host'].strip()
-    else: host = DEFAULT_HOST
+    else: host = os.getenv(DEFAULT_HOST)
     host = host.replace('api/machine/', '') #the remove 'api/machine/' (for backwards compatibility)
     if 'hosturlextension' in data: hostUrlExtension = data['hosturlextension'].strip()
     else: hostUrlExtension = "callback"
@@ -119,7 +118,7 @@ with open(RPi_HOME_FOLDER+'settings.ini') as json_file:
     if 'logerrors' in data: LogErrors = data['logerrors']
     else: LogErrors = False
     if 'connectionString' in data: CONNECTION_STRING = data['connectionString']
-    else: CONNECTION_STRING = "HostName=GronborgIoTHub0001.azure-devices.net;DeviceId=Location0002;SharedAccessKey=s/X91uLVQiTAtjpsZ+wtRX0a9uFXYZmgpAss+8JGpKI="
+    else: CONNECTION_STRING = os.getenv(DEFAULT_CONNECTION_STRING)
     if 'WebHookAnyBedOn' in data:  WebHookAnyBedOn = data['WebHookAnyBedOn'].strip()     
     if 'WebHookAllBedsOn' in data:  WebHookAllBedsOn = data['WebHookAllBedsOn'].strip()  
     if 'WebHookAllBedsOff' in data:  WebHookAllBedsOff = data['WebHookAllBedsOff'].strip()           

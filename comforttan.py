@@ -38,14 +38,20 @@ except:
   RPi_HOME_FOLDER = "./"
 
 
-comforttanVer = "2.22"            # release version for this program
-pollcaVer = "2.2"                 # these are PT hardcoded
+comforttanVer = "2.23"            # release version for this program
+pollcaVer = "2.2"                 # these are currently hardcoded
+pollca_v7Ver = "2026-05-12"       #
 cardterminalVer = "2.2"           #
 if SIMULATION: kernelVer = "sim"  #
 else: kernelVer = "6.1"           #
 
 
-from dotenv import load_dotenv
+try:
+  from dotenv import load_dotenv
+except ImportError:
+  print('Installing python-dotenv')
+  os.system("sudo pip install python-dotenv")
+  from dotenv import load_dotenv
 load_dotenv()
 DEVELOPMENT_LOCATION = "32"
 
@@ -98,6 +104,7 @@ timeStampFormat = "%y%m%d-%H:%M:%S.%f"
 
 CoinAcceptorPort = "none"
 CardReaderPort = "none"
+CoinAcceptorProtocol = "none"  # 'none', 'v6' (existing EMP) or 'v7' (new EMP)
 
 newReset = True
 
@@ -687,6 +694,26 @@ def testNewVersion():
       pass
 
 
+
+
+# Define your rules (replace with your actual Vendor/Product IDs).
+# Identify the IDs of a connected device with:
+#   lsusb -v | grep -E "iSerial|iProduct|idVendor|idProduct"
+#
+# To add a new serial device, append a dict below; HW_IO.installUdevRules
+# will detect the change and (only then) re-install the rules file.
+udev_rules = [
+    {"vid": "0403", "pid": "6015", "symlink": "card_terminal",
+     "comment": "Card terminal (FTDI FT230X/FT4232H)"},
+    {"vid": "0403", "pid": "6001", "symlink": "coin_accept_v6",
+     "comment": "Coin acceptor - existing EMP, v6 protocol (FTDI FT232R)"},
+    {"vid": "1fc9", "pid": "0083", "symlink": "coin_accept_v7",
+     "comment": "Coin acceptor - new EMP, v7 protocol (NXP LPC CDC)"},
+]
+
+
+
+
 def machineInitSim():
   global locationID
   global CALLBACK_URL
@@ -711,6 +738,7 @@ def machineInitHW():
     global VENDINGctrl
     global CoinAcceptorPort
     global CardReaderPort
+    global CoinAcceptorProtocol
     global doorState
     global CabinsInstalled
     global VendingShelfesInstalled
@@ -813,8 +841,22 @@ def machineInitHW():
           CABINctrl[n]['UserSwitch'].pull = digitalio.Pull.UP
           n = n + 1
       
+      # Install udev rules (idempotent — only writes if they have changed,
+      # so adding a new device to `udev_rules` above is enough to roll it
+      # out at the next startup).
+      try:
+          if HW_IO.installUdevRules(udev_rules):
+              Log('udev rules updated - waiting for symlinks to settle')
+              time.sleep(1)
+      except Exception as e:
+          Log('Failed to install udev rules: {0}'.format(e))
+
       CoinAcceptorPort = HW_IO.getCoinAcceptorPort()
+      CoinAcceptorProtocol = HW_IO.getCoinAcceptorProtocol()
       CardReaderPort = HW_IO.getCardReaderPort()
+      Log ('CoinAcceptorPort: '     + CoinAcceptorPort)
+      Log ('CoinAcceptorProtocol: ' + CoinAcceptorProtocol)
+      Log ('CardReaderPort: '       + CardReaderPort)
 
       Log ('\r\n\r\nHardware initialized')
 
@@ -991,17 +1033,44 @@ async def machineControl():
                   except:
                       Log ('Error launching cardterminalDisable');
                   # Now, lets open the coin aceptor:
+                  CAlogfile = None
                   try:
                       if os.path.isfile(CAlogfilename) : CAlogfile = open(CAlogfilename, 'a') # (a)ppend (w)rite
                       else : CAlogfile = open(CAlogfilename, 'w') # (a)ppend (w)rite
                   except:
-                      Log ('CA logfile error')
-                      CAlogfile = "None"
+                      # Mirrors the recovery pattern in cardterminal.py: a stale
+                      # logfile owned by root (or wrong mode) can block reopen
+                      # under the comforttan user. chmod 777 and retry.
+                      Log('CA logfile error - retrying after chmod 777 ' + CAlogfilename)
+                      try:
+                          os.system("sudo chmod 777 " + CAlogfilename)
+                          if os.path.isfile(CAlogfilename) : CAlogfile = open(CAlogfilename, 'a')
+                          else : CAlogfile = open(CAlogfilename, 'w')
+                      except Exception as e:
+                          Log('CA logfile still failing after chmod: {0} - running pollca without log redirection'.format(e))
+                          # NB: must be real None, not the string "None", because
+                          # this value is passed to subprocess.Popen(stdout=...).
+                          CAlogfile = None
                   try:
-                      if LogErrors: 
-                          CA_proc = subprocess.Popen([RPi_HOME_FOLDER+'pollca', CoinAcceptorPort, CALLBACK_URL, 'Y', str(_CA_ClosingAmount)], stdout=CAlogfile, stderr=CAlogfile)
+                      ca_handler = f'{RPi_HOME_FOLDER}pollca' if CoinAcceptorProtocol == 'v6' else f'{RPi_HOME_FOLDER}pollca_v7'
+
+                      # Validate the handler is something we can actually exec.
+                      # Without this, Popen fails with a cryptic PermissionError
+                      # when ca_handler is missing or has lost its +x bit.
+                      if not os.path.isfile(ca_handler):
+                          raise FileNotFoundError(
+                              f'CA handler not found: {ca_handler}'
+                          )
+                      if not os.access(ca_handler, os.X_OK):
+                          Log(f'CA handler not executable, running chmod +x on {ca_handler}')
+                          os.system(f"sudo chmod +x '{ca_handler}'")
+
+                      # Popen accepts None for stdout/stderr (inherits parent's),
+                      # so a failed logfile open no longer crashes the launch.
+                      if LogErrors:
+                          CA_proc = subprocess.Popen([ca_handler, CoinAcceptorPort, CALLBACK_URL, 'Y', str(_CA_ClosingAmount)], stdout=CAlogfile, stderr=CAlogfile)
                       else:
-                          CA_proc = subprocess.Popen([RPi_HOME_FOLDER+'pollca', CoinAcceptorPort, CALLBACK_URL, 'N', str(_CA_ClosingAmount)], stdout=CAlogfile, stderr=CAlogfile)
+                          CA_proc = subprocess.Popen([ca_handler, CoinAcceptorPort, CALLBACK_URL, 'N', str(_CA_ClosingAmount)], stdout=CAlogfile, stderr=CAlogfile)
                       _CA_Activated = 1
                       Log ('CA startet')
                       Log ('Coins are logged to: '+CAlogfilename)
@@ -1014,7 +1083,13 @@ async def machineControl():
                       Log ("\tvalue: %s" % eValue )
                       _DeActivateCA = 1
                       CAStatus = 2
-                      CAlogfile.close()
+                      # Guard close() — CAlogfile may be None if the open above
+                      # failed, in which case there is nothing to close.
+                      try:
+                          if CAlogfile is not None:
+                              CAlogfile.close()
+                      except Exception:
+                          pass
               else:
                   Log ('CA already activated')
                   CAStatus = 1

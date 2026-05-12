@@ -10,7 +10,7 @@
             "request": "launch",
             "preLaunchTask": "build",
             "program": "${workspaceFolder}/pollca_v7/bin/Debug/net8.0/pollca_v7.dll",
-            "args": ["COM12", "http://comforttan-dev.vsrv111.vmc1.systemina.dk/api/machine/32/callback", "Y", "3000"], // <--- Add your parameters here
+            "args": ["COM11", "http://comforttan-dev.vsrv111.vmc1.systemina.dk/api/machine/32/callback", "Y", "3000"], // <--- Add your parameters here
             "cwd": "${workspaceFolder}",
             "console": "internalConsole",
             "stopAtEntry": false,

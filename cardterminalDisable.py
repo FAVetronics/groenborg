@@ -39,10 +39,13 @@ def Log(txt):
 
 
 serialPort = HW_IO.getCardReaderPort()
+if serialPort == "none":
+  Log('No card terminal connected (CardReaderPort=none) - exiting cardterminalDisable.py')
+  sys.exit(0)
 try:
   ser = serial.Serial (serialPort, 57600, timeout=30)    #Open port
 except:
-  print('giving permissions to I2C...')
+  Log('Could not open card terminal serial port - retrying after chmod')
   os.system("sudo chmod 777 " + serialPort)
   ser = serial.Serial (serialPort, 57600, timeout=30)    #try again
 

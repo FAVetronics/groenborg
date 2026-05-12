@@ -1,0 +1,21 @@
+# /etc/udev/rules.d/99-groenborg-serial.rules
+#
+# Stable /dev/ names for the serial devices used by comforttan.
+# Identify the IDs of a connected device with:
+#   lsusb -v | grep -E "iSerial|iProduct|idVendor|idProduct"
+#
+# After editing this file:
+#   sudo cp 99-groenborg-serial.rules /etc/udev/rules.d/
+#   sudo udevadm control --reload-rules
+#   sudo udevadm trigger
+# Then unplug/replug the devices and verify:
+#   ls -l /dev/card_terminal /dev/coin_acceptor_v6 /dev/coin_acceptor_v7
+
+# Card terminal (FTDI FT230X / FT4232H – product 0x6015)
+SUBSYSTEM=="tty", ATTRS{idVendor}=="0403", ATTRS{idProduct}=="6015", SYMLINK+="card_terminal", MODE="0666"
+
+# Coin acceptor – existing EMP unit, v6 protocol (FTDI FT232R – product 0x6001)
+SUBSYSTEM=="tty", ATTRS{idVendor}=="0403", ATTRS{idProduct}=="6001", SYMLINK+="coin_acceptor_v6", MODE="0666"
+
+# Coin acceptor – new EMP unit, v7 protocol (NXP LPC USB CDC – 1fc9:0083)
+SUBSYSTEM=="tty", ATTRS{idVendor}=="1fc9", ATTRS{idProduct}=="0083", SYMLINK+="coin_acceptor_v7", MODE="0666"

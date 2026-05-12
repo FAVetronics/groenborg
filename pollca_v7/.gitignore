@@ -1,0 +1,19 @@
+# Build output
+bin/
+obj/
+
+# Visual Studio
+.vs/
+*.user
+*.suo
+
+# Rider / VS Code workspace state
+.idea/
+*.code-workspace
+
+# OS junk
+Thumbs.db
+.DS_Store
+
+# Logs
+*.log

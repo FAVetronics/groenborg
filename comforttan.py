@@ -674,10 +674,12 @@ def testNewVersion():
   try:
     if os.path.exists(NEW_RELEASE_FOLDER):
       os.system('sudo cp '+NEW_RELEASE_FOLDER +'* '+RPi_HOME_FOLDER)
+      os.system('sudo cp '+NEW_RELEASE_FOLDER +'.env '+RPi_HOME_FOLDER)
       Log ('\r\n\r\nUpdating from revision ' + comforttanVer)
       dir_list = os.listdir(NEW_RELEASE_FOLDER)
       Log (dir_list)
       os.system('sudo rm '+NEW_RELEASE_FOLDER +'*')
+      os.system('sudo rm '+NEW_RELEASE_FOLDER +'.env')
       os.system('sudo rmdir '+NEW_RELEASE_FOLDER)
       os.system("sudo reboot")
   except:
@@ -685,6 +687,7 @@ def testNewVersion():
     try:
       Log ('Removing files')
       os.system('sudo rm '+NEW_RELEASE_FOLDER +'*')
+      os.system('sudo rm '+NEW_RELEASE_FOLDER +'.env')
     except:
       pass
     try:
@@ -858,6 +861,34 @@ def machineInitHW():
       Log ('CoinAcceptorProtocol: ' + CoinAcceptorProtocol)
       Log ('CardReaderPort: '       + CardReaderPort)
 
+
+      # open / close the card reader to make sure it's ready
+      ca_handler = get_ca_handler()
+      probe_proc = subprocess.Popen(
+          [ca_handler, CoinAcceptorPort, CALLBACK_URL, 'N', '1'],
+          stdout=subprocess.DEVNULL,
+          stderr=subprocess.DEVNULL,
+      )
+
+      deadline = time.perf_counter() + 2
+      ca_ok = True
+      while time.perf_counter() < deadline:
+          if probe_proc.poll() is not None:
+              Log(f'CA probe failed: pollca exited early with code {probe_proc.returncode}')
+              ca_ok = False
+              break
+          time.sleep(0.1)
+
+      if ca_ok:
+          probe_proc.terminate()
+          try:
+              probe_proc.wait(timeout=2)
+          except subprocess.TimeoutExpired:
+              probe_proc.kill()
+              probe_proc.wait()
+          Log('CA probe OK')
+
+
       Log ('\r\n\r\nHardware initialized')
 
     except:
@@ -866,6 +897,23 @@ def machineInitHW():
 
 
 prevDate = datetime.datetime.now().strftime('%d')
+
+
+
+def get_ca_handler():
+    handler = f'{RPi_HOME_FOLDER}pollca' if CoinAcceptorProtocol == 'v6' else f'{RPi_HOME_FOLDER}pollca_v7'
+
+    # Validate the handler is something we can actually exec.
+    # Without this, Popen fails with a cryptic PermissionError
+    # when ca_handler is missing or has lost its +x bit.
+    if not os.path.isfile(handler):
+        raise FileNotFoundError(
+            f'CA handler not found: {handler}'
+        )
+    if not os.access(handler, os.X_OK):
+        Log(f'CA handler not executable, running chmod +x on {handler}')
+        os.system(f"sudo chmod +x '{handler}'")
+    return handler
 
 
 async def machineControl():
@@ -1009,7 +1057,12 @@ async def machineControl():
           _CA_Activated = 0
           # terminate CA application
           try:
-              os.kill(CA_proc.pid, signal.SIGSTOP)
+              CA_proc.terminate()
+              try:
+                  CA_proc.wait(timeout=2)
+              except subprocess.TimeoutExpired:
+                  CA_proc.kill()
+                  CA_proc.wait()
               Log ('CA stopped')
               CAStatus = 0
           except:
@@ -1024,14 +1077,14 @@ async def machineControl():
               if _CA_Activated == 0:
                   # First make sure card reader is disabled:
                   try:
-                      proc.terminate() #terminate previous session - Preffer terminate() over kill() to be sure that logfile is closed 
+                      proc.terminate() #terminate previous session - Prefer terminate() over kill() to be sure that logfile is closed
                   except:
                       Log('failed terminating card reader')
                   await asyncio.sleep(.1)
                   try:
                       subprocess.Popen(['python3', 'cardterminalDisable.py'])
                   except:
-                      Log ('Error launching cardterminalDisable');
+                      Log ('Error launching cardterminalDisable')
                   # Now, lets open the coin aceptor:
                   CAlogfile = None
                   try:
@@ -1052,18 +1105,7 @@ async def machineControl():
                           # this value is passed to subprocess.Popen(stdout=...).
                           CAlogfile = None
                   try:
-                      ca_handler = f'{RPi_HOME_FOLDER}pollca' if CoinAcceptorProtocol == 'v6' else f'{RPi_HOME_FOLDER}pollca_v7'
-
-                      # Validate the handler is something we can actually exec.
-                      # Without this, Popen fails with a cryptic PermissionError
-                      # when ca_handler is missing or has lost its +x bit.
-                      if not os.path.isfile(ca_handler):
-                          raise FileNotFoundError(
-                              f'CA handler not found: {ca_handler}'
-                          )
-                      if not os.access(ca_handler, os.X_OK):
-                          Log(f'CA handler not executable, running chmod +x on {ca_handler}')
-                          os.system(f"sudo chmod +x '{ca_handler}'")
+                      ca_handler = get_ca_handler()
 
                       # Popen accepts None for stdout/stderr (inherits parent's),
                       # so a failed logfile open no longer crashes the launch.
@@ -1099,15 +1141,13 @@ async def machineControl():
           timeStamp = '"timeStamp":"'+datetime.datetime.now().strftime(timeStampFormat)+'"'
           await sendLogMessage('{"property":"coinAcceptorStatus","status": '+format(CAStatus)+','+timeStamp+'}')
       if (_CA_Activated == 1) and (time.perf_counter() > CAopenTime + 1):
-        try:
-          with open(CAlogfilename, 'r') as f:
-            finalLine = f.readlines()[-2] #find second-last line
-            if 'bye' in finalLine:
-              Log('amount reached')
+          if CA_proc.poll() is not None:  # None == still running
+              if CA_proc.returncode == 0:
+                  Log('amount reached')
+              else:
+                  Log(f'pollca exited with code {CA_proc.returncode}')
               _DeActivateCA = 1
-        except:
-            traceback.print_exc()
-      
+
           
       # Update changed status to server
       i = 0

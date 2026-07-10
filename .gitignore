@@ -4,3 +4,5 @@
 .env
 
 *.rules
+
+pollca_v7_proj/pollca_v7/bin/

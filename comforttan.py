@@ -81,6 +81,10 @@ _ActivateCA = 0
 _DeActivateCA = 0
 _CA_Activated = 0
 _CA_ClosingAmount = 9999999
+_card_transaction_id = ""
+_card_reference = ""
+_coin_transaction_id = ""
+_coin_reference = ""
 
 WebHookAnyBedOn = "0.0.0.0"     # Signal to turn off other power consumers
 WebHookAllBedsOn = "0.0.0.0"    # For "All taken" sign
@@ -410,17 +414,25 @@ async def sendCurrentConfig():
 
 async def  cardPayment(JSONcontent):
     global _amountToRequest
+    global _card_reference
+    global _card_transaction_id
     _amountToRequest = JSONcontent['requestAmount']
     if JSONcontent['newRequest'] == 0: _amountToRequest = 0
     if _amountToRequest not in range(100000): 
         Log("requestAmount invalid: "+str(_amountToRequest)+" - revert to 0")
         _amountToRequest = 0
+    if 'transactionID' in JSONcontent: _card_transaction_id = JSONcontent['transactionID']
+    else: _card_transaction_id = ""
+    if 'reference' in JSONcontent: _card_reference = JSONcontent['reference']
+    else: _card_reference = ""
 
 
 async def coinAcceptor(JSONcontent):
     global _ActivateCA
     global _DeActivateCA
     global _CA_ClosingAmount
+    global _coin_transaction_id
+    global _coin_reference
     if 'activate' in JSONcontent:
       if JSONcontent['activate'] == 1:
         _ActivateCA = 1
@@ -433,6 +445,10 @@ async def coinAcceptor(JSONcontent):
       _DeActivateCA = 1
     if 'closingAmount' in JSONcontent: _CA_ClosingAmount = JSONcontent['closingAmount']
     else: _CA_ClosingAmount = 9999999
+    if 'transactionID' in JSONcontent: _coin_transaction_id = JSONcontent['transactionID']
+    else: _coin_transaction_id = ""
+    if 'reference' in JSONcontent: _coin_reference = JSONcontent['reference']
+    else: _coin_reference = ""
 
 
 async def cmdManualDoor(JSONcontent):
@@ -865,7 +881,7 @@ def machineInitHW():
       # open / close the card reader to make sure it's ready
       ca_handler = get_ca_handler()
       probe_proc = subprocess.Popen(
-          [ca_handler, CoinAcceptorPort, CALLBACK_URL, 'N', '1'],
+          [ca_handler, CoinAcceptorPort, CALLBACK_URL, 'N', '1', _coin_transaction_id, _coin_reference],
           stdout=subprocess.DEVNULL,
           stderr=subprocess.DEVNULL,
       )
@@ -934,8 +950,12 @@ async def machineControl():
   global _ActivateCA 
   global _DeActivateCA 
   global _CA_Activated 
-  global _CA_ClosingAmount 
-  global prevSESSIONSTATUS 
+  global _CA_ClosingAmount
+  global _card_reference
+  global _card_transaction_id
+  global _coin_reference
+  global _coin_transaction_id
+  global prevSESSIONSTATUS
   global CABINctrl 
   global VENDINGctrl
   global LogErrors
@@ -1037,7 +1057,7 @@ async def machineControl():
           timeStamp = '"timeStamp":"'+datetime.datetime.now().strftime(timeStampFormat)+'"'
           await sendLogMessage('{"property":"cardTerminalStatus","status": 1'+','+timeStamp+'}')
           try:
-              proc = subprocess.Popen(['python3', 'cardterminal.py', str(_amountToRequest)])
+              proc = subprocess.Popen(['python3', 'cardterminal.py', str(_amountToRequest), _card_transaction_id, _card_reference])
           except:
               Log ('Error running cardterminal.py');
           _amountToRequest = 0;
@@ -1110,9 +1130,9 @@ async def machineControl():
                       # Popen accepts None for stdout/stderr (inherits parent's),
                       # so a failed logfile open no longer crashes the launch.
                       if LogErrors:
-                          CA_proc = subprocess.Popen([ca_handler, CoinAcceptorPort, CALLBACK_URL, 'Y', str(_CA_ClosingAmount)], stdout=CAlogfile, stderr=CAlogfile)
+                          CA_proc = subprocess.Popen([ca_handler, CoinAcceptorPort, CALLBACK_URL, 'Y', str(_CA_ClosingAmount), _coin_transaction_id, _coin_reference], stdout=CAlogfile, stderr=CAlogfile)
                       else:
-                          CA_proc = subprocess.Popen([ca_handler, CoinAcceptorPort, CALLBACK_URL, 'N', str(_CA_ClosingAmount)], stdout=CAlogfile, stderr=CAlogfile)
+                          CA_proc = subprocess.Popen([ca_handler, CoinAcceptorPort, CALLBACK_URL, 'N', str(_CA_ClosingAmount), _coin_transaction_id, _coin_reference], stdout=CAlogfile, stderr=CAlogfile)
                       _CA_Activated = 1
                       Log ('CA startet')
                       Log ('Coins are logged to: '+CAlogfilename)

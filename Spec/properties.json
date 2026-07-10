@@ -1,0 +1,281 @@
+{
+	"JSONformat" : "JSONC"
+}
+
+
+/************************************************* */
+/*                                                 */
+/* JSON properties for Comforttan MQTT over Azure. */
+/*                                                 */
+/* Revision: 1.1                                   */
+/* Date: 231005                                    */
+/*                                                 */
+/* Added expirationTime to messages from back-end  */
+/*                                                 */
+/* FAVetronics / Niels Falk Vedel                  */
+/*                                                 */
+/************************************************* */
+
+
+/*** Card terminal ***/
+
+{
+	"property" : "cardTerminalControl",
+	"newRequest" : 1, // 1 to start a session - 0 to terminate active session
+	"requestAmount" : 2000 // to request 20,00kr
+	"expirationTime" : "230831-16:57:36.012291"
+}
+
+{
+	"property" : "cardTerminalStatus",
+	"status" : 1 // 0=closed; 1=open; 2=error
+	"timeStamp" : "230831-16:57:36.012291"
+}
+// received amount and status is sent to callback url as before
+//	"amountReceived" : 2000,
+//	"terminalStatus" : 0
+//			TRANSACTION_SUCCEEDED = 0
+//			TRANSACTION_FAILED = 1
+//			TRANSACTION_TIMEOUT = 2
+//			NO_REPLY_FROM_TERMINAL = 3
+//			TERMINAL_BUSY = 4
+//			TRANSACTION_STARTET = 5
+
+
+
+nytnytnytnytnytnytnytnytnytnyt
+
+/*** Card terminal ***/
+
+// from backend:
+{
+	"property" : "cardTerminalControl",
+	"newRequest" : 1, // 1 to start a session - 0 to terminate active session
+	"requestAmount" : 2000 // to request 20,00kr
+	"transactionID" : 9384239048,
+	"reference":  "Alphanumeric long key",
+	"expirationTime" : "230831-16:57:36.012291"
+}
+
+// Once completed, received amount and status is returned to callback url
+//	"amountReceived" : 2000,
+//	"terminalStatus" : 0
+{
+	"method":"cardTerminal",
+	"data": {
+		"amountReceived" : 2000,
+		"transactionID" : 9384239048,
+		"reference":  "Alphanumeric long key",
+		"error" : 0,
+//			TRANSACTION_SUCCEEDED = 0
+//			TRANSACTION_FAILED = 1
+//			TRANSACTION_TIMEOUT = 2
+//			NO_REPLY_FROM_TERMINAL = 3
+//			TERMINAL_BUSY = 4
+//			TRANSACTION_STARTET = 5
+		"DateTime" : "230831-16:57:36.012291"
+	}
+}
+
+
+
+/*** Coin Acceptor ***/
+
+// from backend:
+{
+	"property" : "coinAcceptorControl",
+	"activate" : 1, // 1 to activate - 0 to deactivate
+	"closingAmount" : 2000 // to request 20,00kr and close coin acceptor when amount is reached
+	"transactionID" : 9384239049,
+	"reference":  "Alphanumeric long key",
+	"expirationTime" : "230831-16:57:36.012291"
+}
+
+// Once completed, received amount and status is returned to callback url
+//	"amountReceived" : 2000,
+//	"terminalStatus" : 0
+{
+	"method":"coinAcceptor",
+	"data": {
+		"amountReceived" : 2000,
+		"transactionID" : 9384239049,
+		"reference":  "Alphanumeric long key",
+		"DateTime" : "230831-16:57:36.012291"
+	}
+}
+
+nytnytnytnytnytnytnytnytnytnyt
+
+
+
+
+/*** Coin Acceptor ***/
+
+{
+	"property" : "coinAcceptorControl",
+	"activate" : 1, // 1 to activate - 0 to deactivate
+	"closingAmount" : 2000 // to request 20,00kr and close coin acceptor when amount is reached
+	"expirationTime" : "230831-16:57:36.012291"
+}
+
+{
+	"property" : "coinAcceptorStatus",
+	"status" : 1 // 0=closed; 1=open; 2=error
+	"timeStamp" : "230831-16:57:36.012291"
+}
+// received coins are sent to callback url as before
+
+/*** Cabins ***/
+
+{
+	"property" : "cabinControl",
+	"cabinNo" : 5,
+	"newState" : 1, // 1 to start a session - 0 to terminate active session
+	"timeSet" : 12
+	"expirationTime" : "230831-16:57:36.012291"
+}
+
+{
+	"property" : "cabinStatus",
+	"cabinNo" : 5,
+	"status" : 2,
+		// SESSION_STATUS_IDLE = 0
+		// SESSION_STATUS_RUNNING = 1
+		// SESSION_STATUS_AWAITING_USER_START = 2
+	"timeAutostart" : 17
+	"timeLeft" : 12
+	"timeStamp" : "230831-16:57:36.012291"
+}
+
+
+/*** Door ***/
+
+{
+	"property" : "doorControl",
+	"activate" : 1 // 1 to activate - 0 to deactivate
+	"expirationTime" : "230831-16:57:36.012291"
+}	
+	
+{
+	"property" : "doorStatus",
+	"status" : 1,							// -1: Door not installed - 0: closed - 1: open
+	"timeLeft" : 0
+	"timeStamp" : "230831-16:57:36.012291"
+}
+	
+
+/*** Vending ***/
+{
+	"property" : "vendingControl",
+	"shelf" : 2,
+	"activate" : 1, // 1 to activate - 0 to deactivate
+	"expirationTime" : "230831-16:57:36.012291"
+}
+
+{
+	"property" : "vendingStatus",
+	"shelf" : 2,
+	"shelfTimeLeft" : 1, // 0.99 (sec) - 0 means vending not active
+	"timeStamp" : "230831-16:57:36.012291"
+}
+
+
+/*** Log files ***/
+
+{
+	"property" : "logFileControl",
+	"getLogFiles" : 1,
+	"object_id": "161695209555" // file reference
+	"expirationTime" : "230831-16:57:36.012291"
+//		Causes AllLogs.zip to be sent to <host>/api/mobile/receive-log/<location>/						
+//		where <host> is set in settings.ini:	
+//			https://comforttanpay.com/ #Production server
+//			http://comforttan-dev.vsrv105.vmc1.systemina.dk/ #Staging server
+}
+
+{
+	"property" : "logFileStatus",
+	"status" : 0 //
+//		0: OK / complete
+//		2: transmission error
+//		3: zip error
+	"timeStamp" : "230831-16:57:36.012291"
+}
+
+
+
+/*** Upload files ***/
+{
+	"property" : "uploadFileControl",
+	"path" : "http://.../",
+	"name" : "version_nn.zip",
+	"MD5" : "1234"
+	"expirationTime" : "230831-16:57:36.012291"
+//		Uploads the file given in path/file, verify MD5,
+//		unzips file to the grønborg folder, delete zip file
+}
+
+{
+	"property" : "uploadFileStatus",
+	"status" : 0 
+//		0: OK / complete
+//		1: MD5 error
+//		2: transmission error
+//		3: zip error
+	"timeStamp" : "230831-16:57:36.012291"
+}
+
+
+
+/*** Disable message expiration function ***/
+{
+	"property" : "diableMessageExpiration"
+}
+// To be used in case of misaligned clocks (eg. summer-/winter-time)
+// Disables the check of expiration time on telegrams received.
+// Must be sent after reset before the "settings" telegram.
+// Cleared at reboot
+
+/*** Settings ***/
+
+{
+	"property" : "settings",
+	"maxSessionTime" : 40,    //1..99 (min)
+	"autostartTimeout" : 180, //0..99 (sec)        
+	"vendTime" : 1,           //1..99 (sec)
+	"doorTime" : 20           //0..99 (sec)
+	"expirationTime" : "230831-16:57:36.012291"
+}
+
+
+/*** Configuration ***/
+
+{
+	"property" : "configuration",
+	"comforttanVer" : "2.00",
+	"pollcaVer" : "2.00",
+	"cardterminalVer" : "2.00",
+	"kernelVer" : "6.1",
+	"noOfCabins" : 6,         // 6/10
+	"noOfShelfes" : 2,        // 2/10
+	"doorInstalled" : 0       // 0/1
+	"timeStamp" : "230831-16:57:36.012291"
+}
+
+
+/*** Reboot ***/
+{
+	"property" : "reboot"
+	"expirationTime" : "230831-16:57:36.012291"
+//		Forces RPi to reboot
+}
+
+
+/*** Reset ***/
+{
+	"property" : "reset"
+	"timeStamp" : "230831-16:57:36.012291"
+// Sent on device program start - Must be acknowledged with "settings" property
+}
+
+

@@ -1,4 +1,7 @@
-# invoke for test: python3 cardterminal.py 5678 /dev/ttyUSB1
+# invoke for test: python3 cardterminal.py amount Transaction_ID Reference
+# ex: python3 cardterminal.py 5678 726436429 sifhw9e7fh72fuaewfih283hf8hæaw
+# gets handle to com port from HW_IO
+
 
 import serial
 from time import sleep
@@ -18,7 +21,7 @@ except:
   SIMULATION = True
 
 
-PROGRAM_VERSION = '2.2'
+PROGRAM_VERSION = '2.3'
 
 TRANSACTION_SUCCEEDED = 0
 TRANSACTION_FAILED = 1
@@ -51,6 +54,12 @@ AmountToRequest_centi = 1
 #Command line arguments
 if len(sys.argv) > 1:
 	AmountToRequest_centi = int(sys.argv[1])
+
+_transaction_id = ""
+_reference = ""
+if len(sys.argv) > 3:
+	_transaction_id = sys.argv[2]
+	_reference = sys.argv[3]
 
 serialPort = HW_IO.getCardReaderPort()
 if serialPort == "none":
@@ -286,7 +295,7 @@ if __name__ == "__main__":
 	for attempt in range(10):
 		try:
 			timeStamp = datetime.datetime.now().strftime("%Y:%m:%d %H:%M:%S.%f")
-			rply = requests.post(CALLBACK_URL, json = {"method":"cardTerminal", "data":{"amountReceived" : amountReceived, "error" : error, "DateTime":timeStamp}}, timeout=timeoutVal)
+			rply = requests.post(CALLBACK_URL, json = {"method":"cardTerminal", "data":{"amountReceived" : amountReceived, "transactionID" : _transaction_id, "reference" : _reference, "error" : error, "DateTime":timeStamp}}, timeout=timeoutVal)
 			Log (rply.text)
 		except:
 			Log ('error posting CardTerminalResult')

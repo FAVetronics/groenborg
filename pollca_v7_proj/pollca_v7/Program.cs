@@ -7,7 +7,7 @@ using System.Globalization;
 using ccTalk;
 
 
-string revision = "2026-05-12"; // for logging only, no auto-update mechanism
+string revision = "2026-07-12"; // for logging only, no auto-update mechanism
 
 // -----------------------------------------------------------------------------
 // Defaults (mirroring main.cpp)
@@ -21,17 +21,21 @@ string callbackUrl = DEF_CALLBACK_URL;
 string extendedLogging = "n";
 int closingAmount_x100 = DEF_CLOSING_AMOUNT_X100;
 int receivedAmount_x100 = 0;
+string _transaction_id = "";
+string _reference = "";
 
 // -----------------------------------------------------------------------------
 // Parse args:  <port> [callbackUrl] [extendedLogging] [closingAmount_x100]
 // -----------------------------------------------------------------------------
 if (args.Length < 1)
 {
-    Console.WriteLine("Usage: pollca_v7 <port> [callbackUrl] [extendedLogging] [closingAmount_x100]");
+    Console.WriteLine("Usage: pollca_v7 <port> [callbackUrl] [extendedLogging] [closingAmount_x100] [transaction_id] [reference]");
     Console.WriteLine("  <port>              Serial port to open, e.g. COM11 or /dev/ttyUSB0");
     Console.WriteLine("  [callbackUrl]       URL to POST coin values to (default: " + DEF_CALLBACK_URL + ")");
     Console.WriteLine("  [extendedLogging]   'y' or 'n' (default: n)");
     Console.WriteLine("  [closingAmount_x100] Stop when received total reaches this amount * 100");
+    Console.WriteLine("  [transaction_id] looped back to backend to keepr track of transactions");
+    Console.WriteLine("  [reference] looped back to backend to keepr track of transactions");
     return 1;
 }
 
@@ -40,6 +44,8 @@ if (args.Length > 1) callbackUrl = args[1];
 if (args.Length > 2) extendedLogging = args[2];
 if (args.Length > 3 && int.TryParse(args[3], NumberStyles.Integer, CultureInfo.InvariantCulture, out var ca))
     closingAmount_x100 = ca;
+if (args.Length > 4) _transaction_id = args[4];
+if (args.Length > 5) _reference = args[5];
 
 // Auto-flush stdout/stderr so that output is visible immediately when the
 // process is launched with redirected pipes (e.g. Python's subprocess.Popen
@@ -66,7 +72,7 @@ http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Basic"
 void PostCoinval(int amountX100)
 {
     string nowIso = DateTime.Now.ToString("yyyy:MM:dd HH:mm:ss.ffffff", CultureInfo.InvariantCulture);
-    string jsonObj = $"{{\"method\":\"coinAcceptor\", \"data\":{{\"amountreceived\" : {amountX100}, \"DateTime\": \"{nowIso}\"}}}}";
+    string jsonObj = $"{{\"method\":\"coinAcceptor\", \"data\":{{\"amountreceived\" : {transactionID}, \"_transaction_id\" : {_}, \"reference\" : {_reference}, \"DateTime\": \"{nowIso}\"}}}}";
     Console.WriteLine($"POST -> {callbackUrl}");
     Console.WriteLine($"This: {jsonObj}");
 

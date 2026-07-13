@@ -40,8 +40,8 @@ except:
 
 comforttanVer = "2.23"            # release version for this program
 pollcaVer = "2.2"                 # these are currently hardcoded
-pollca_v7Ver = "2026-05-12"       #
-cardterminalVer = "2.2"           #
+pollca_v7Ver = "2026-07-12"       #
+cardterminalVer = "2.3"           #
 if SIMULATION: kernelVer = "sim"  #
 else: kernelVer = "6.1"           #
 
@@ -340,11 +340,19 @@ async def DoorHandler():
       if requestedDoorState == False:
         Log("Door closed manually")
         setDoorState(False)
-        if WebHookDoorClose != "0.0.0.0": requests.post(WebHookDoorClose)
+        if WebHookDoorClose != "0.0.0.0":
+            try:
+                await asyncio.get_running_loop().run_in_executor(None, lambda: requests.post(WebHookDoorClose, timeout=2))
+            except Exception as e:
+                Log(f"WebHookDoorClose failed: {e}")
         doorTimeLeft = 0 
       else:
         setDoorState(True)
-        if WebHookDoorOpen != "0.0.0.0": requests.post(WebHookDoorOpen)
+        if WebHookDoorOpen != "0.0.0.0":
+            try:
+                await asyncio.get_running_loop().run_in_executor(None, lambda: requests.post(WebHookDoorOpen, timeout=2))
+            except Exception as e:
+                Log(f"WebHookDoorOpen failed: {e}")
         # wait for timeout
         while (doorTimeLeft > 0) and (requestedDoorState == True):
           if doorTimeLeft != DOOR_OPENED_MANUALLY_STATUS_SENT: 
@@ -353,7 +361,11 @@ async def DoorHandler():
           await asyncio.sleep(1)
         # close door
         setDoorState(False)
-        if WebHookDoorClose != "0.0.0.0": requests.post(WebHookDoorClose)
+        if WebHookDoorClose != "0.0.0.0":
+            try:
+                await asyncio.get_running_loop().run_in_executor(None, lambda: requests.post(WebHookDoorClose, timeout=2))
+            except Exception as e:
+                Log(f"WebHookDoorClose failed: {e}")
         requestedDoorState = False
         doorTimeLeft = 0
         Log("Door closed")
@@ -667,6 +679,7 @@ def checkTanningTime():
   global SESSION_STATUS_IDLE
   global SESSION_STATUS_RUNNING
   global CABINctrl
+#  global WebHookBedTimeLeft
   sessionRunning = False
   CabinCnt = 0
   while CabinCnt < CabinsInstalled:
@@ -676,6 +689,11 @@ def checkTanningTime():
         CABINctrl[CabinCnt]['timer_s'] = time.perf_counter()
         SESSIONSTATUS[CabinCnt]['sessionTimeLeft_m'] = SESSIONSTATUS[CabinCnt]['sessionTimeLeft_m'] - 1
         Log('Cabin '+str(CabinCnt+1) + ' timeleft: ' + str(SESSIONSTATUS[CabinCnt]['sessionTimeLeft_m']))
+#        if WebHookBedTimeLeft != "0.0.0.0":
+#            try:
+#                await asyncio.get_running_loop().run_in_executor(None, lambda: requests.post(WebHookBedTimeLeft, timeout=2))
+#            except Exception as e:
+#                Log(f"WebHookBedTimeLeft failed: {e}")
         if SESSIONSTATUS[CabinCnt]['sessionTimeLeft_m'] <= 0: # Session completed
           # deactivate output
           setCabinState(CabinCnt, False)
@@ -1192,15 +1210,27 @@ async def machineControl():
       global prevAnyBedActive
       global prevAllBedsActive
       if bedActive and not prevAnyBedActive:
-        if WebHookAnyBedOn != "0.0.0.0": requests.post(WebHookAnyBedOn)
+        if WebHookAnyBedOn != "0.0.0.0":
+            try:
+                await asyncio.get_running_loop().run_in_executor(None, lambda: requests.post(WebHookAnyBedOn, timeout=2))
+            except Exception as e:
+                Log(f"WebHookAnyBedOn failed: {e}")
       elif not bedActive and prevAnyBedActive:
-        if WebHookAllBedsOff != "0.0.0.0": requests.post(WebHookAllBedsOff)
+        if WebHookAllBedsOff != "0.0.0.0":
+            try:
+                await asyncio.get_running_loop().run_in_executor(None, lambda: requests.post(WebHookAllBedsOff, timeout=2))
+            except Exception as e:
+                Log(f"WebHookAllBedsOff failed: {e}")
       prevAnyBedActive = bedActive
       allOn = True
       for CabinCnt in range(CabinsInstalled):  
         if (SESSIONSTATUS[CabinCnt]['sessionStatus'] != SESSION_STATUS_RUNNING): allOn = False
       if allOn and not prevAllBedsActive:
-        if WebHookAllBedsOn != "0.0.0.0": requests.post(WebHookAllBedsOn)
+        if WebHookAllBedsOn != "0.0.0.0":
+            try:
+                await asyncio.get_running_loop().run_in_executor(None, lambda: requests.post(WebHookAllBedsOn, timeout=2))
+            except Exception as e:
+                Log(f"WebHookAllBedsOn failed: {e}")
       prevAllBedsActive = allOn
       #### WebHooks
       

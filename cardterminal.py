@@ -56,9 +56,11 @@ if len(sys.argv) > 1:
 	AmountToRequest_centi = int(sys.argv[1])
 
 _transaction_id = ""
+if len(sys.argv) > 2:
+	_transaction_id = sys.argv[2]
+
 _reference = ""
 if len(sys.argv) > 3:
-	_transaction_id = sys.argv[2]
 	_reference = sys.argv[3]
 
 serialPort = HW_IO.getCardReaderPort()
@@ -295,7 +297,7 @@ if __name__ == "__main__":
 	for attempt in range(10):
 		try:
 			timeStamp = datetime.datetime.now().strftime("%Y:%m:%d %H:%M:%S.%f")
-			rply = requests.post(CALLBACK_URL, json = {"method":"cardTerminal", "data":{"amountReceived" : amountReceived, "transactionID" : _transaction_id, "reference" : _reference, "error" : error, "DateTime":timeStamp}}, timeout=timeoutVal)
+			rply = requests.post(CALLBACK_URL, json = {"method":"cardTerminal", "data":{"amountReceived" : amountReceived, "transactionID" : int(_transaction_id), "reference" : _reference, "error" : error, "DateTime":timeStamp}}, timeout=timeoutVal)
 			Log (rply.text)
 		except:
 			Log ('error posting CardTerminalResult')

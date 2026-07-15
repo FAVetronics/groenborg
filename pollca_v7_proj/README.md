@@ -20,12 +20,14 @@ dotnet build ccTalk.sln -c Release
 Self-contained Linux ARM publish (matches the original deployment target):
 (In the project folder (\groenborg\pollca_v7_proj) on the windows machine)
 ```
-dotnet publish pollca_v7/pollca_v7.csproj -c Release -r linux-arm --self-contained true
+dotnet publish pollca_v7/pollca_v7.csproj -c Release -r linux-arm --self-contained true -p:PublishSingleFile=true
 ```
 copy to RPi:
-...
+```
 scp .\pollca_v7\bin\Release\net8.0\linux-arm\publish\pollca_v7 comforttan@comforttan.local:
-...
+```
+(it may be nessecary to dele the old one first)
+
 
 ## Run
 

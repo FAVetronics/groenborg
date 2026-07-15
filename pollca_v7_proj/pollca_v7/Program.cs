@@ -21,7 +21,7 @@ string callbackUrl = DEF_CALLBACK_URL;
 string extendedLogging = "n";
 int closingAmount_x100 = DEF_CLOSING_AMOUNT_X100;
 int receivedAmount_x100 = 0;
-string _transaction_id = "";
+int _transaction_id = 0;
 string _reference = "";
 
 // -----------------------------------------------------------------------------
@@ -44,7 +44,8 @@ if (args.Length > 1) callbackUrl = args[1];
 if (args.Length > 2) extendedLogging = args[2];
 if (args.Length > 3 && int.TryParse(args[3], NumberStyles.Integer, CultureInfo.InvariantCulture, out var ca))
     closingAmount_x100 = ca;
-if (args.Length > 4) _transaction_id = args[4];
+if (args.Length > 4 && int.TryParse(args[4], NumberStyles.Integer, CultureInfo.InvariantCulture, out var id))
+    _transaction_id = id;
 if (args.Length > 5) _reference = args[5];
 
 // Auto-flush stdout/stderr so that output is visible immediately when the
@@ -59,6 +60,8 @@ Console.WriteLine($"Using port:           {port}");
 Console.WriteLine($"Callback URL:         {callbackUrl}");
 Console.WriteLine($"Extended logging:     {extendedLogging}");
 Console.WriteLine($"Closing amount x100:  {closingAmount_x100}");
+Console.WriteLine($"transaction_id:       {_transaction_id}");
+Console.WriteLine($"reference:            {_reference}");
 
 // -----------------------------------------------------------------------------
 // HTTP client used for POST_Coinval
@@ -72,7 +75,7 @@ http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Basic"
 void PostCoinval(int amountX100)
 {
     string nowIso = DateTime.Now.ToString("yyyy:MM:dd HH:mm:ss.ffffff", CultureInfo.InvariantCulture);
-    string jsonObj = $"{{\"method\":\"coinAcceptor\", \"data\":{{\"amountreceived\" : {transactionID}, \"_transaction_id\" : {_}, \"reference\" : {_reference}, \"DateTime\": \"{nowIso}\"}}}}";
+    string jsonObj = $"{{\"method\":\"coinAcceptor\", \"data\":{{\"amountreceived\" : {amountX100}, \"transactionID\" : {_transaction_id}, \"reference\" : \"{_reference}\", \"DateTime\": \"{nowIso}\"}}}}";
     Console.WriteLine($"POST -> {callbackUrl}");
     Console.WriteLine($"This: {jsonObj}");
 

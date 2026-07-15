@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project-private xmlns="http://www.netbeans.org/ns/project-private/1">
+    <editor-bookmarks xmlns="http://www.netbeans.org/ns/editor-bookmarks/1">
+        <file>
+            <url>ccTalkDevice.cpp</url>
+            <line>511</line>
+            <line>687</line>
+        </file>
+        <file>
+            <url>ccTalkEmpDevice.h</url>
+            <line>96</line>
+        </file>
+        <file>
+            <url>ccTalkBillValidatorDevice.cpp</url>
+            <line>113</line>
+            <line>171</line>
+        </file>
+        <file>
+            <url>MdbCashlessDevice.cpp</url>
+            <line>243</line>
+            <line>326</line>
+        </file>
+        <file>
+            <url>ccTalkCCT910Device.cpp</url>
+            <line>182</line>
+        </file>
+        <file>
+            <url>ccTalkEmpDevice.cpp</url>
+            <line>337</line>
+            <line>374</line>
+        </file>
+    </editor-bookmarks>
+</project-private>

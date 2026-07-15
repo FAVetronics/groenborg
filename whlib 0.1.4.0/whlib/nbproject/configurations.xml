@@ -1,0 +1,133 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configurationDescriptor version="62">
+  <logicalFolder name="root" displayName="root" projectFiles="true">
+    <logicalFolder name="HeaderFiles"
+                   displayName="Header Files"
+                   projectFiles="true">
+      <logicalFolder name="whlib" displayName="whlib" projectFiles="true">
+        <logicalFolder name="dist" displayName="dist" projectFiles="true">
+          <logicalFolder name="Debug" displayName="Debug" projectFiles="true">
+            <logicalFolder name="GNU-Linux-x86"
+                           displayName="GNU-Linux-x86"
+                           projectFiles="true">
+            </logicalFolder>
+          </logicalFolder>
+        </logicalFolder>
+        <logicalFolder name="doc" displayName="doc" projectFiles="true">
+          <logicalFolder name="doc" displayName="doc" projectFiles="true">
+            <logicalFolder name="html" displayName="html" projectFiles="true">
+            </logicalFolder>
+            <logicalFolder name="latex" displayName="latex" projectFiles="true">
+            </logicalFolder>
+            <logicalFolder name="man" displayName="man" projectFiles="true">
+              <logicalFolder name="man3" displayName="man3" projectFiles="true">
+              </logicalFolder>
+            </logicalFolder>
+            <logicalFolder name="rtf" displayName="rtf" projectFiles="true">
+            </logicalFolder>
+          </logicalFolder>
+          <logicalFolder name="html" displayName="html" projectFiles="true">
+          </logicalFolder>
+          <logicalFolder name="latex" displayName="latex" projectFiles="true">
+          </logicalFolder>
+          <logicalFolder name="man" displayName="man" projectFiles="true">
+            <logicalFolder name="man3" displayName="man3" projectFiles="true">
+            </logicalFolder>
+          </logicalFolder>
+          <logicalFolder name="rtf" displayName="rtf" projectFiles="true">
+          </logicalFolder>
+        </logicalFolder>
+      </logicalFolder>
+      <itemPath>CSerCom.h</itemPath>
+      <itemPath>CTimeOut.h</itemPath>
+      <itemPath>CccTalk.h</itemPath>
+      <itemPath>MdbCashlessDevice.h</itemPath>
+      <itemPath>MdbDevice.h</itemPath>
+      <itemPath>MdbDispenserDevice.h</itemPath>
+      <itemPath>ccTalkBillValidatorDevice.h</itemPath>
+      <itemPath>ccTalkCCT900Device.h</itemPath>
+      <itemPath>ccTalkCCT910Device.h</itemPath>
+      <itemPath>ccTalkCisDevice.h</itemPath>
+      <itemPath>ccTalkDevice.h</itemPath>
+      <itemPath>ccTalkEmpDevice.h</itemPath>
+      <itemPath>ccTalkHzwDevice.h</itemPath>
+      <itemPath>ccTalkPayoutDevice.h</itemPath>
+      <itemPath>ccTalkTwsDevice.h</itemPath>
+      <itemPath>cct900globals.h</itemPath>
+      <itemPath>cct910globals.h</itemPath>
+      <itemPath>cisglobals.H</itemPath>
+      <itemPath>nomination.h</itemPath>
+      <itemPath>tools.h</itemPath>
+      <itemPath>twsglobals.h</itemPath>
+      <itemPath>whLib.h</itemPath>
+      <itemPath>whglobals.h</itemPath>
+    </logicalFolder>
+    <logicalFolder name="ResourceFiles"
+                   displayName="Resource Files"
+                   projectFiles="true">
+    </logicalFolder>
+    <logicalFolder name="SourceFiles"
+                   displayName="Source Files"
+                   projectFiles="true">
+      <itemPath>CSerCom.cpp</itemPath>
+      <itemPath>CTimeOut.cpp</itemPath>
+      <itemPath>CccTalk.cpp</itemPath>
+      <itemPath>MdbCashlessDevice.cpp</itemPath>
+      <itemPath>MdbDevice.cpp</itemPath>
+      <itemPath>MdbDispenserDevice.cpp</itemPath>
+      <itemPath>ccTalkBillValidatorDevice.cpp</itemPath>
+      <itemPath>ccTalkCCT900Device.cpp</itemPath>
+      <itemPath>ccTalkCCT910Device.cpp</itemPath>
+      <itemPath>ccTalkCisDevice.cpp</itemPath>
+      <itemPath>ccTalkDevice.cpp</itemPath>
+      <itemPath>ccTalkEmpDevice.cpp</itemPath>
+      <itemPath>ccTalkHzwDevice.cpp</itemPath>
+      <itemPath>ccTalkPayoutDevice.cpp</itemPath>
+      <itemPath>ccTalkTwsDevice.cpp</itemPath>
+      <itemPath>nomination.cpp</itemPath>
+      <itemPath>tools.cpp</itemPath>
+    </logicalFolder>
+    <logicalFolder name="ExternalFiles"
+                   displayName="Important Files"
+                   projectFiles="false">
+      <itemPath>Makefile</itemPath>
+    </logicalFolder>
+  </logicalFolder>
+  <sourceRootList>
+    <Elem>.</Elem>
+  </sourceRootList>
+  <projectmakefile>Makefile</projectmakefile>
+  <confs>
+    <conf name="Debug" type="3">
+      <toolsSet>
+        <developmentServer>localhost</developmentServer>
+        <compilerSet>GNU|GNU</compilerSet>
+        <platform>2</platform>
+      </toolsSet>
+      <compileType>
+        <archiverTool>
+        </archiverTool>
+      </compileType>
+    </conf>
+    <conf name="Release" type="3">
+      <toolsSet>
+        <developmentServer>localhost</developmentServer>
+        <compilerSet>GNU|GNU</compilerSet>
+        <platform>2</platform>
+      </toolsSet>
+      <compileType>
+        <cTool>
+          <developmentMode>5</developmentMode>
+        </cTool>
+        <ccTool>
+          <developmentMode>5</developmentMode>
+        </ccTool>
+        <fortranCompilerTool>
+          <developmentMode>5</developmentMode>
+        </fortranCompilerTool>
+        <archiverTool>
+        </archiverTool>
+      </compileType>
+    </conf>
+  </confs>
+</configurationDescriptor>

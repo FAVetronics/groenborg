@@ -1,0 +1,109 @@
+#
+# Generated Makefile - do not edit!
+#
+# Edit the Makefile in the project folder instead (../Makefile). Each target
+# has a -pre and a -post target defined where you can add customized code.
+#
+# This makefile implements configuration specific macros and targets.
+
+
+# Environment
+MKDIR=mkdir
+CP=cp
+CCADMIN=CCadmin
+RANLIB=ranlib
+CC=gcc
+CCC=g++
+CXX=g++
+FC=
+AS=as
+
+# Macros
+CND_PLATFORM=GNU-Linux-x86
+CND_CONF=Debug
+CND_DISTDIR=dist
+
+# Include project Makefile
+include Makefile
+
+# Object Directory
+OBJECTDIR=build/${CND_PLATFORM}
+
+# Object Files
+OBJECTFILES= \
+	${OBJECTDIR}/_ext/_DOTDOT/whlib/ccTalkDevice.o \
+	${OBJECTDIR}/_ext/_DOTDOT/whlib/ccTalkEmpDevice.o \
+	${OBJECTDIR}/_ext/_DOTDOT/whlib/CSerCom.o \
+	${OBJECTDIR}/_ext/_DOTDOT/whlib/CccTalk.o \
+	${OBJECTDIR}/_ext/_DOTDOT/whlib/CTimeOut.o \
+	${OBJECTDIR}/main.o
+
+# C Compiler Flags
+CFLAGS=
+
+# CC Compiler Flags
+CCFLAGS=
+CXXFLAGS=
+
+# Fortran Compiler Flags
+FFLAGS=
+
+# Assembler Flags
+ASFLAGS=
+
+# Link Libraries and Options
+LDLIBSOPTIONS=-lcurl
+
+# Build Targets
+.build-conf: ${BUILD_SUBPROJECTS}
+	${MAKE}  -f nbproject/Makefile-Debug.mk dist/Debug/GNU-Linux-x86/pollca 
+
+dist/Debug/GNU-Linux-x86/pollca: ${OBJECTFILES}
+	${MKDIR} -p dist/Debug/GNU-Linux-x86
+	${LINK.cc} -o ${CND_DISTDIR}/${CND_CONF}/${CND_PLATFORM}/pollca ${OBJECTFILES} ${LDLIBSOPTIONS} 
+
+${OBJECTDIR}/_ext/_DOTDOT/whlib/ccTalkDevice.o: nbproject/Makefile-${CND_CONF}.mk ../whlib/ccTalkDevice.cpp 
+	${MKDIR} -p ${OBJECTDIR}/_ext/_DOTDOT/whlib
+	${RM} $@.d
+	$(COMPILE.cc) -g -I../whlib -MMD -MP -MF $@.d -o ${OBJECTDIR}/_ext/_DOTDOT/whlib/ccTalkDevice.o ../whlib/ccTalkDevice.cpp
+
+${OBJECTDIR}/_ext/_DOTDOT/whlib/ccTalkEmpDevice.o: nbproject/Makefile-${CND_CONF}.mk ../whlib/ccTalkEmpDevice.cpp 
+	${MKDIR} -p ${OBJECTDIR}/_ext/_DOTDOT/whlib
+	${RM} $@.d
+	$(COMPILE.cc) -g -I../whlib -MMD -MP -MF $@.d -o ${OBJECTDIR}/_ext/_DOTDOT/whlib/ccTalkEmpDevice.o ../whlib/ccTalkEmpDevice.cpp
+
+${OBJECTDIR}/_ext/_DOTDOT/whlib/CSerCom.o: nbproject/Makefile-${CND_CONF}.mk ../whlib/CSerCom.cpp 
+	${MKDIR} -p ${OBJECTDIR}/_ext/_DOTDOT/whlib
+	${RM} $@.d
+	$(COMPILE.cc) -g -I../whlib -MMD -MP -MF $@.d -o ${OBJECTDIR}/_ext/_DOTDOT/whlib/CSerCom.o ../whlib/CSerCom.cpp
+
+${OBJECTDIR}/_ext/_DOTDOT/whlib/CccTalk.o: nbproject/Makefile-${CND_CONF}.mk ../whlib/CccTalk.cpp 
+	${MKDIR} -p ${OBJECTDIR}/_ext/_DOTDOT/whlib
+	${RM} $@.d
+	$(COMPILE.cc) -g -I../whlib -MMD -MP -MF $@.d -o ${OBJECTDIR}/_ext/_DOTDOT/whlib/CccTalk.o ../whlib/CccTalk.cpp
+
+${OBJECTDIR}/_ext/_DOTDOT/whlib/CTimeOut.o: nbproject/Makefile-${CND_CONF}.mk ../whlib/CTimeOut.cpp 
+	${MKDIR} -p ${OBJECTDIR}/_ext/_DOTDOT/whlib
+	${RM} $@.d
+	$(COMPILE.cc) -g -I../whlib -MMD -MP -MF $@.d -o ${OBJECTDIR}/_ext/_DOTDOT/whlib/CTimeOut.o ../whlib/CTimeOut.cpp
+
+${OBJECTDIR}/main.o: nbproject/Makefile-${CND_CONF}.mk main.cpp 
+	${MKDIR} -p ${OBJECTDIR}
+	${RM} $@.d
+	$(COMPILE.cc) -g -I../whlib -MMD -MP -MF $@.d -o ${OBJECTDIR}/main.o main.cpp
+
+# Subprojects
+.build-subprojects:
+
+# Clean Targets
+.clean-conf:
+	${RM} -r build/Debug
+	${RM} dist/Debug/GNU-Linux-x86/pollca
+
+# Subprojects
+.clean-subprojects:
+
+# Enable dependency checking
+.dep.inc: .depcheck-impl
+
+include .dep.inc

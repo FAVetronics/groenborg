@@ -6,3 +6,14 @@
 *.rules
 
 pollca_v7_proj/pollca_v7/bin/
+# Compiled binaries and build artifacts
+whlib 0.1.4.0/*/build/
+whlib 0.1.4.0/*/dist/
+whlib 0.1.4.0/whlib/doc/
+pollca_v7_proj/pollca_v7/obj/
+
+# Unused sibling projects
+whlib 0.1.4.0/cct900/
+whlib 0.1.4.0/cctlist/
+whlib 0.1.4.0/mdbcashless/
+whlib 0.1.4.0/pollbv/

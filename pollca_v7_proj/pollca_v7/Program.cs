@@ -7,7 +7,7 @@ using System.Globalization;
 using ccTalk;
 
 
-string revision = "2026-07-12"; // for logging only, no auto-update mechanism
+string revision = "2026-07-16"; // for logging only, no auto-update mechanism
 
 // -----------------------------------------------------------------------------
 // Defaults (mirroring main.cpp)
@@ -75,7 +75,11 @@ http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Basic"
 void PostCoinval(int amountX100)
 {
     string nowIso = DateTime.Now.ToString("yyyy:MM:dd HH:mm:ss.ffffff", CultureInfo.InvariantCulture);
-    string jsonObj = $"{{\"method\":\"coinAcceptor\", \"data\":{{\"amountreceived\" : {amountX100}, \"transactionID\" : {_transaction_id}, \"reference\" : \"{_reference}\", \"DateTime\": \"{nowIso}\"}}}}";
+    string jsonObj;
+    if (_transaction_id > 0)
+        jsonObj = $"{{\"method\":\"coinAcceptor\", \"data\":{{\"amountreceived\" : {amountX100}, \"transactionID\" : {_transaction_id}, \"reference\" : \"{_reference}\", \"DateTime\": \"{nowIso}\"}}}}";
+    else
+        jsonObj = $"{{\"method\":\"coinAcceptor\", \"data\":{{\"amountreceived\" : {amountX100}, \"DateTime\": \"{nowIso}\"}}}}";
     Console.WriteLine($"POST -> {callbackUrl}");
     Console.WriteLine($"This: {jsonObj}");
 

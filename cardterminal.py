@@ -21,7 +21,7 @@ except:
   SIMULATION = True
 
 
-PROGRAM_VERSION = '2.3'
+PROGRAM_VERSION = '2.5'
 
 TRANSACTION_SUCCEEDED = 0
 TRANSACTION_FAILED = 1
@@ -55,9 +55,9 @@ AmountToRequest_centi = 1
 if len(sys.argv) > 1:
 	AmountToRequest_centi = int(sys.argv[1])
 
-_transaction_id = ""
+_transaction_id = 0
 if len(sys.argv) > 2:
-	_transaction_id = sys.argv[2]
+	_transaction_id = int(sys.argv[2])
 
 _reference = ""
 if len(sys.argv) > 3:
@@ -297,7 +297,10 @@ if __name__ == "__main__":
 	for attempt in range(10):
 		try:
 			timeStamp = datetime.datetime.now().strftime("%Y:%m:%d %H:%M:%S.%f")
-			rply = requests.post(CALLBACK_URL, json = {"method":"cardTerminal", "data":{"amountReceived" : amountReceived, "transactionID" : int(_transaction_id), "reference" : _reference, "error" : error, "DateTime":timeStamp}}, timeout=timeoutVal)
+			if _transaction_id > 0:
+				rply = requests.post(CALLBACK_URL, json = {"method":"cardTerminal", "data":{"amountReceived" : amountReceived, "transactionID" : int(_transaction_id), "reference" : _reference, "error" : error, "DateTime":timeStamp}}, timeout=timeoutVal)
+			else:
+				rply = requests.post(CALLBACK_URL, json = {"method":"cardTerminal", "data":{"amountReceived" : amountReceived, "error" : error, "DateTime":timeStamp}}, timeout=timeoutVal)
 			Log (rply.text)
 		except:
 			Log ('error posting CardTerminalResult')

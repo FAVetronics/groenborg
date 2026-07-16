@@ -38,10 +38,10 @@ except:
   RPi_HOME_FOLDER = "./"
 
 
-comforttanVer = "2.24"            # release version for this program
-pollcaVer = "2.3"                 # these are currently hardcoded
-pollca_v7Ver = "2026-07-12"       #
-cardterminalVer = "2.3"           #
+comforttanVer = "2.25"            # release version for this program
+pollcaVer = "2.4"                 # these are currently hardcoded
+pollca_v7Ver = "2026-07-16"       #
+cardterminalVer = "2.5"           #
 if SIMULATION: kernelVer = "sim"  #
 else: kernelVer = "6.1"           #
 

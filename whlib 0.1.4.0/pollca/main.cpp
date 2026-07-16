@@ -209,7 +209,10 @@ public:
 		CURLcode res;
 		long http_code;
 		char jsonBuf[512];
-		snprintf(jsonBuf, sizeof(jsonBuf), "{\"method\":\"coinAcceptor\", \"data\":{\"amountreceived\" : %d, \"transactionID\" : %d, \"reference\" : \"%s\", \"DateTime\": \"%s\"}}", iValueToPOST, _transaction_id, _reference.c_str(), GetfTime());
+		if (_transaction_id > 0)
+    		snprintf(jsonBuf, sizeof(jsonBuf), "{\"method\":\"coinAcceptor\", \"data\":{\"amountreceived\" : %d, \"transactionID\" : %d, \"reference\" : \"%s\", \"DateTime\": \"%s\"}}", iValueToPOST, _transaction_id, _reference.c_str(), GetfTime());
+    	else
+    		snprintf(jsonBuf, sizeof(jsonBuf), "{\"method\":\"coinAcceptor\", \"data\":{\"amountreceived\" : %d, \"DateTime\": \"%s\"}}", iValueToPOST, GetfTime()); // for backwards compatibility
 		std::string jsonObj(jsonBuf);
 		printf("This: %s\r\n", jsonObj.c_str());
 		
@@ -362,7 +365,7 @@ int main(int Parm_Count, char *Parms[])
     char portname[LEN_PORT_NAME] = DEF_PORT_NAME;
 
 	setbuf(stdout, NULL);
-	string version =  "2.3";
+	string version =  "2.4";
 	acceptor.PrintTime();
 	printf("FAVetronics version: %s\r\n", version.c_str());
 

@@ -1,6 +1,6 @@
 @echo off
 
-set "rel=2.23"
+set "rel=2.25"
 
 set "dest=.\releases\comforttan_r%rel%.zip"
 

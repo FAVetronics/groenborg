@@ -38,7 +38,7 @@ except:
   RPi_HOME_FOLDER = "./"
 
 
-comforttanVer = "2.25"            # release version for this program
+comforttanVer = "2.26"            # release version for this program
 pollcaVer = "2.4"                 # these are currently hardcoded
 pollca_v7Ver = "2026-07-16"       #
 cardterminalVer = "2.5"           #
@@ -90,7 +90,8 @@ WebHookAnyBedOn = "0.0.0.0"     # Signal to turn off other power consumers
 WebHookAllBedsOn = "0.0.0.0"    # For "All taken" sign
 WebHookAllBedsOff = "0.0.0.0"   # Turn other power consumers back on
 WebHookDoorOpen = "0.0.0.0"     # ex: "WebHookDoorOpen":"http://192.168.2.100/relay/0?turn=on&timer=10",
-WebHookDoorClose = "0.0.0.0"    
+WebHookDoorClose = "0.0.0.0"
+WebHookBedTimeLeft = "0.0.0.0"  # endpoint called when cabin n has been active for one minutte - ex: "WebHookBedTimeLeft" : "http://192.168.111.5/decCnt="
 
 prevAnyBedActive = False
 prevAllBedsActive  = False
@@ -133,10 +134,9 @@ with open(RPi_HOME_FOLDER+'settings.ini') as json_file:
     if 'WebHookAnyBedOn' in data:  WebHookAnyBedOn = data['WebHookAnyBedOn'].strip()     
     if 'WebHookAllBedsOn' in data:  WebHookAllBedsOn = data['WebHookAllBedsOn'].strip()  
     if 'WebHookAllBedsOff' in data:  WebHookAllBedsOff = data['WebHookAllBedsOff'].strip()           
-    if 'WebHookDoorOpen' in data:  WebHookDoorOpen = data['WebHookDoorOpen'].strip()           
-    if 'WebHookDoorClose' in data:  WebHookDoorClose = data['WebHookDoorClose'].strip()     
-
-
+    if 'WebHookDoorOpen' in data:  WebHookDoorOpen = data['WebHookDoorOpen'].strip()
+    if 'WebHookDoorClose' in data:  WebHookDoorClose = data['WebHookDoorClose'].strip()
+    if 'WebHookBedTimeLeft' in data:  WebHookBedTimeLeft = data['WebHookBedTimeLeft'].strip()
 
 # Add a logging handler so we can see the raw communication data
 import logging
@@ -673,14 +673,15 @@ def checkUserStart():
     CabinCnt = CabinCnt + 1
   return sessionRunning
 
-def checkTanningTime():
+async def checkTanningTime():
   global CabinsInstalled
   global SESSIONSTATUS
   global SESSION_STATUS_IDLE
   global SESSION_STATUS_RUNNING
   global CABINctrl
-#  global WebHookBedTimeLeft
+  global WebHookBedTimeLeft
   sessionRunning = False
+  timeLeftWebHooks = []
   CabinCnt = 0
   while CabinCnt < CabinsInstalled:
     if (SESSIONSTATUS[CabinCnt]['sessionStatus'] == SESSION_STATUS_RUNNING):
@@ -689,17 +690,22 @@ def checkTanningTime():
         CABINctrl[CabinCnt]['timer_s'] = time.perf_counter()
         SESSIONSTATUS[CabinCnt]['sessionTimeLeft_m'] = SESSIONSTATUS[CabinCnt]['sessionTimeLeft_m'] - 1
         Log('Cabin '+str(CabinCnt+1) + ' timeleft: ' + str(SESSIONSTATUS[CabinCnt]['sessionTimeLeft_m']))
-#        if WebHookBedTimeLeft != "0.0.0.0":
-#            try:
-#                await asyncio.get_running_loop().run_in_executor(None, lambda: requests.post(WebHookBedTimeLeft, timeout=2))
-#            except Exception as e:
-#                Log(f"WebHookBedTimeLeft failed: {e}")
+        if WebHookBedTimeLeft != "0.0.0.0":
+            timeLeftWebHooks.append(CabinCnt+1)
         if SESSIONSTATUS[CabinCnt]['sessionTimeLeft_m'] <= 0: # Session completed
           # deactivate output
           setCabinState(CabinCnt, False)
           SESSIONSTATUS[CabinCnt]['sessionStatus'] = SESSION_STATUS_IDLE
           Log(SESSIONSTATUS[CabinCnt])
     CabinCnt = CabinCnt + 1
+  # Webhooks are fired after the scan loop: awaiting inside the loop would let
+  # a c2d message handler (cmdStartSession) mutate SESSIONSTATUS mid-scan, so a
+  # session started during that window could be overwritten by a stale IDLE.
+  for _cabinNo in timeLeftWebHooks:
+    try:
+        await asyncio.get_running_loop().run_in_executor(None, lambda n=_cabinNo: requests.get(WebHookBedTimeLeft+str(n), timeout=2))
+    except Exception as e:
+        Log(f"WebHookBedTimeLeft failed: {e}")
   return sessionRunning
       
 
@@ -1203,8 +1209,8 @@ async def machineControl():
               prevSESSIONSTATUS[i]['sessionTimeLeft_m'] = SESSIONSTATUS[i]['sessionTimeLeft_m']
           i = i + 1
       
-      waitingForUserStart = checkUserStart()          
-      tanningTimeRunning = checkTanningTime()
+      waitingForUserStart = checkUserStart()
+      tanningTimeRunning = await checkTanningTime()
       bedActive = waitingForUserStart or tanningTimeRunning
       #### WebHooks
       global prevAnyBedActive
@@ -1386,9 +1392,9 @@ async def main():
             Log("Unexpected error in main().")
             traceback.print_exc()
             SessionRunning = False
-            _waitingForUserStart = checkUserStart()          
-            _tanningTimeRunning = checkTanningTime()
-            SessionRunning = waitingForUserStart or tanningTimeRunning
+            _waitingForUserStart = checkUserStart()
+            _tanningTimeRunning = await checkTanningTime()
+            SessionRunning = _waitingForUserStart or _tanningTimeRunning
             connectionAttempts = connectionAttempts + 1
             if ((connectionAttempts > NO_OF_CONNECTION_ATTEMPTS_1min) and not SessionRunning) or (connectionAttempts > NO_OF_CONNECTION_ATTEMPTS_40min):
               Log ('Gone through ' + str(connectionAttempts) + 'connection attempts - rebooting')

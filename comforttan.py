@@ -46,13 +46,6 @@ if SIMULATION: kernelVer = "sim"  #
 else: kernelVer = "6.1"           #
 
 
-try:
-  from dotenv import load_dotenv
-except ImportError:
-  print('Installing python-dotenv')
-  os.system("sudo pip install python-dotenv")
-  from dotenv import load_dotenv
-load_dotenv()
 DEVELOPMENT_LOCATION = "32"
 
 
@@ -121,22 +114,38 @@ with open(RPi_HOME_FOLDER+'settings.ini') as json_file:
     elif 'location' in data:  locationID = data['location'].strip()
     elif 'lokation' in data:  locationID = data['lokation'].strip()
     else:  locationID = DEVELOPMENT_LOCATION
-    if 'host' in data: host = data['host'].strip()
-    else: host = os.getenv(DEFAULT_HOST)
-    host = host.replace('api/machine/', '') #the remove 'api/machine/' (for backwards compatibility)
+    missingSettings = []  # 'host' and 'connectionString' are mandatory - there are no defaults
+    if 'host' in data and data['host'].strip() != '': host = data['host'].strip()
+    else: missingSettings.append('host')
     if 'hosturlextension' in data: hostUrlExtension = data['hosturlextension'].strip()
     else: hostUrlExtension = "callback"
-    CALLBACK_URL = host + "api/machine/" + locationID + '/' + hostUrlExtension
+    if 'host' not in missingSettings:
+      host = host.replace('api/machine/', '') #the remove 'api/machine/' (for backwards compatibility)
+      CALLBACK_URL = host + "api/machine/" + locationID + '/' + hostUrlExtension
     if 'logerrors' in data: LogErrors = data['logerrors']
     else: LogErrors = False
-    if 'connectionString' in data: CONNECTION_STRING = data['connectionString']
-    else: CONNECTION_STRING = os.getenv(DEFAULT_CONNECTION_STRING)
+    if 'connectionString' in data and data['connectionString'].strip() != '': CONNECTION_STRING = data['connectionString'].strip()
+    else: missingSettings.append('connectionString')
     if 'WebHookAnyBedOn' in data:  WebHookAnyBedOn = data['WebHookAnyBedOn'].strip()     
     if 'WebHookAllBedsOn' in data:  WebHookAllBedsOn = data['WebHookAllBedsOn'].strip()  
     if 'WebHookAllBedsOff' in data:  WebHookAllBedsOff = data['WebHookAllBedsOff'].strip()           
     if 'WebHookDoorOpen' in data:  WebHookDoorOpen = data['WebHookDoorOpen'].strip()
     if 'WebHookDoorClose' in data:  WebHookDoorClose = data['WebHookDoorClose'].strip()
     if 'WebHookBedTimeLeft' in data:  WebHookBedTimeLeft = data['WebHookBedTimeLeft'].strip()
+
+# Leave the program if mandatory settings are missing. Logged regardless of 'logerrors'
+# (Log() is not defined yet at this point, so the log file is written directly)
+if missingSettings:
+    import sys
+    _msg = 'FATAL: settings.ini is missing mandatory setting(s): ' + ', '.join(missingSettings) + ' - comforttan ' + comforttanVer + ' exits'
+    print(_msg, flush=True)
+    try:
+        os.makedirs(RPi_HOME_FOLDER + 'Logs', exist_ok=True)
+        with open(RPi_HOME_FOLDER + 'Logs/Log' + datetime.datetime.now().strftime("%Y%m%d") + '.log', 'a') as _f:
+            _f.write(datetime.datetime.now().strftime("%H:%M:%S.%f") + '\t' + _msg + '\r\n')
+    except Exception:
+        traceback.print_exc()
+    sys.exit(1)
 
 # Add a logging handler so we can see the raw communication data
 import logging
@@ -175,6 +184,226 @@ def Log(txt):
 
 
 
+# ---------------------------------------------------------------------------
+# /etc/rc.local maintenance
+#
+# The shipped rc.local rotates /boot/rc_local*.log with `cp`, under `sh -e`.
+# On a full boot partition that cp fails, `sh -e` aborts the script, and
+# comforttan.py is never started: the unit is unreachable until the SD card is
+# physically replaced. (Observed at location 15, 30 May 2021 - /boot had 3 kB
+# free and rc_local_2.log was left truncated mid-word.)
+#
+# The replacement rotates by RENAME: it needs no free space, cannot leave a
+# truncated file, and carries no `-e`, so a logging problem can never stop the
+# application from starting.
+#
+# This runs once per unit and takes effect at the next boot. No reboot is
+# forced here - a reboot is the one moment these units are known to fail.
+# ---------------------------------------------------------------------------
+
+RC_LOCAL_MARKER = 'rc_local rotation v2'
+
+RC_LOCAL_V2 = r'''#!/bin/sh
+#
+# rc.local - rc_local rotation v2
+#
+# Rotate the boot-partition log by RENAME, not copy: needs no free space and
+# cannot leave a truncated file. Deliberately no "set -e": a failure rotating
+# a log must never stop the application from starting.
+
+rm -f /boot/rc_local_2.log
+mv -f /boot/rc_local_1.log /boot/rc_local_2.log 2>/dev/null
+mv -f /boot/rc_local.log   /boot/rc_local_1.log 2>/dev/null
+exec >/boot/rc_local.log 2>&1
+set -x
+
+# allow network to be up and running before starting the app
+# sleep time in seconds
+# Test shows that 15s is sufficient - 30s to be sure
+sleep 30
+
+# Print the IP address
+_IP=$(hostname -I) || true
+if [ "$_IP" ]; then
+  printf "My IP address is %s\n" "$_IP"
+fi
+
+cd /home/comforttan/
+python3 comforttan.py
+sudo reboot # should we ever get here
+
+exit 0
+'''
+
+
+def rcLocalVersion():
+    # 'v2' if /etc/rc.local is the rename-based version, 'v1' if not.
+    try:
+        with open('/etc/rc.local') as file:
+            return 'v2' if RC_LOCAL_MARKER in file.read() else 'v1'
+    except:
+        return 'unknown'
+
+
+def bootFreeBytes():
+    # Free bytes on the /boot partition, or -1 if it cannot be read.
+    try:
+        st = os.statvfs('/boot')
+        return st.f_bavail * st.f_frsize
+    except:
+        return -1
+
+
+def rootFreeBytes():
+    # Free bytes on the root partition, or -1 if it cannot be read. This is
+    # f_bavail, the space an unprivileged process may use; ext4 keeps about 5%
+    # reserved for root on top of it, so the true headroom for a process
+    # running as root is a little larger. Conservative on purpose - it matches
+    # the Avail column of df.
+    try:
+        st = os.statvfs('/')
+        return st.f_bavail * st.f_frsize
+    except:
+        return -1
+
+
+# Kernel undervoltage markers. Two spellings exist across the kernel versions
+# in the field: the older firmware message "Under-voltage detected!" and the
+# current raspberrypi-hwmon driver's "Undervoltage detected!". Count both.
+UNDERVOLTAGE_MARKERS = (b'Undervoltage detected', b'Under-voltage detected')
+
+
+def countUnderVoltage(data):
+    # Number of undervoltage markers in a bytes object.
+    n = 0
+    for marker in UNDERVOLTAGE_MARKERS:
+        n += data.count(marker)
+    return n
+
+
+# Where the kernel's undervoltage lines actually land. rsyslog writes each
+# kernel line to BOTH kern.log and syslog, and on some units kern.log stops
+# being written months before the unit fails (card 134: kern.log empty from
+# 18-May, unit ran until 15-Jul) while syslog keeps going. Scan both and
+# de-duplicate, or the figure is either doubled or zero.
+UNDERVOLTAGE_LOG_GLOBS = ('/var/log/kern.log*', '/var/log/syslog*')
+
+# Ignore log files nothing has touched for this long. Rotations from 2022 are
+# still present on these cards and would inflate the figure forever.
+UNDERVOLTAGE_MAX_LOG_AGE_S = 90 * 24 * 3600
+
+
+def underVoltageCount():
+    # Distinct undervoltage events in the system log, over roughly the last
+    # 90 days. De-duplicated on the whole log line - the kernel timestamp
+    # [   14.170204] makes each event unique, so the same line appearing in
+    # both kern.log and syslog is counted once. Never raises.
+    # Returns -1 if no log file could be read at all.
+    import gzip
+    seen = set()
+    filesRead = 0
+    cutoff = time.time() - UNDERVOLTAGE_MAX_LOG_AGE_S
+    for pattern in UNDERVOLTAGE_LOG_GLOBS:
+        for name in sorted(glob.glob(pattern)):
+            try:
+                if os.path.getmtime(name) < cutoff:
+                    continue
+                file = gzip.open(name, 'rb') if name.endswith('.gz') else open(name, 'rb')
+                try:
+                    # Line at a time: a marker never straddles a line, and the
+                    # logs can be tens of megabytes.
+                    for line in file:
+                        if countUnderVoltage(line):
+                            seen.add(line.strip())
+                finally:
+                    file.close()
+                filesRead += 1
+            except:
+                pass
+    if filesRead == 0:
+        return -1
+    return len(seen)
+
+
+def underVoltageSinceBoot():
+    # Undervoltage events since this boot, from the kernel ring buffer. The
+    # buffer wraps, so on a unit with a very long uptime this can undercount;
+    # on a unit that is power cycled nightly it is effectively today's count.
+    # Returns -1 if dmesg cannot be read.
+    try:
+        out = subprocess.check_output(['dmesg'], stderr=subprocess.DEVNULL)
+        return countUnderVoltage(out)
+    except:
+        return -1
+
+
+def sdCardInfo():
+    # Identity of the SD card from its CID register:
+    #   manfid:oemid:name:hwrev:fwrev:serial:date
+    # e.g. 0x000003:0x5344:MSSD0:0x8:0x0:0x1234abcd:03/2020
+    # Empty string if it cannot be read. This is what lets a failure be tied
+    # to a card model or a production batch once the whole fleet reports.
+    parts = []
+    for field in ('manfid', 'oemid', 'name', 'hwrev', 'fwrev', 'serial', 'date'):
+        try:
+            with open('/sys/block/mmcblk0/device/' + field) as file:
+                value = file.read().strip()
+        except:
+            value = ''
+        # keep it safe to drop straight into the JSON message
+        parts.append(''.join(c for c in value if 32 <= ord(c) < 127 and c not in '"\\'))
+    if not ''.join(parts):
+        return ''
+    return ':'.join(parts)
+
+
+def fixRcLocal():
+    # Install the rename-based /etc/rc.local. Idempotent, never raises.
+    # Returns True only when the file was actually rewritten by this call.
+    try:
+        with open('/etc/rc.local') as file:
+            current = file.read()
+    except:
+        Log('rc.local: cannot read /etc/rc.local - leaving it alone')
+        return False
+
+    if RC_LOCAL_MARKER in current:
+        return False                          # already v2, nothing to do
+
+    try:
+        # Stage in /tmp then sudo-copy into place. Note: "sudo echo x >> file"
+        # does NOT work - the redirect runs as the calling user, not as root.
+        with open('/tmp/rc.local.new', 'w') as file:
+            file.write(RC_LOCAL_V2)
+        os.system("sudo cp /etc/rc.local /etc/rc.local.bak")
+        rc = os.system("sudo cp /tmp/rc.local.new /etc/rc.local")
+        os.system("sudo chmod 755 /etc/rc.local")
+        os.system("sudo chown root:root /etc/rc.local")
+        try:
+            os.remove('/tmp/rc.local.new')
+        except:
+            pass
+    except:
+        traceback.print_exc()
+        return False
+
+    if rc != 0:
+        Log('rc.local: update FAILED (rc=' + str(rc) + ') - original left in place')
+        return False
+
+    # Read back and confirm before claiming success; restore the backup if not.
+    if rcLocalVersion() != 'v2':
+        Log('rc.local: readback failed - restoring backup')
+        os.system("sudo cp /etc/rc.local.bak /etc/rc.local")
+        os.system("sudo chmod 755 /etc/rc.local")
+        os.system("sudo chown root:root /etc/rc.local")
+        return False
+
+    Log('rc.local: updated to ' + RC_LOCAL_MARKER + ' (backup: /etc/rc.local.bak)')
+    Log('rc.local: takes effect at the next boot - no reboot forced here')
+    return True
+
+
 if SIMULATION == False:
 
   # Test if WD has already been enabled (https://pysselilivet.blogspot.com/2021/10/raspberry-pi-watchdog-made-simple.html)
@@ -192,6 +421,13 @@ if SIMULATION == False:
         os.system("sudo echo 'ShutdownWatchdogSec=5min' >> /etc/systemd/system.conf")
         os.system("sudo chmod 644 /etc/systemd/system.conf")
         os.system("sudo reboot")
+  except:
+    traceback.print_exc()
+
+  # Make sure a full /boot can never stop rc.local before the app starts.
+  # Idempotent: rewrites the file at most once, and forces no reboot.
+  try:
+    fixRcLocal()
   except:
     traceback.print_exc()
 
@@ -414,8 +650,14 @@ async def sendCurrentConfig():
       cabinCnt = '"noOfCabins":'+format(CabinsInstalled)
       shelfCnt = '"noOfShelfes":'+format(VendingShelfesInstalled)
       doorCnt = '"doorInstalled":'+format(doorInstalled)
+      rcVer = '"rcLocalVer":"'+rcLocalVersion()+'"'
+      bootFree = '"bootFreeBytes":'+str(bootFreeBytes())
+      rootFree = '"rootFreeBytes":'+str(rootFreeBytes())
+      uvCnt = '"underVoltageCount":'+str(underVoltageCount())
+      uvBoot = '"underVoltageSinceBoot":'+str(underVoltageSinceBoot())
+      sdCard = '"sdCard":"'+sdCardInfo()+'"'
       timeStamp = '"timeStamp":"'+datetime.datetime.now().strftime(timeStampFormat)+'"'
-      await sendLogMessage('{"property":"configuration",'+progVer+','+caVer+','+cardVer+','+kernVer+','+cabinCnt+','+shelfCnt+','+doorCnt+','+timeStamp+'}')
+      await sendLogMessage('{"property":"configuration",'+progVer+','+caVer+','+cardVer+','+kernVer+','+cabinCnt+','+shelfCnt+','+doorCnt+','+rcVer+','+bootFree+','+rootFree+','+uvCnt+','+uvBoot+','+sdCard+','+timeStamp+'}')
 
 
 
@@ -714,12 +956,10 @@ def testNewVersion():
   try:
     if os.path.exists(NEW_RELEASE_FOLDER):
       os.system('sudo cp '+NEW_RELEASE_FOLDER +'* '+RPi_HOME_FOLDER)
-      os.system('sudo cp '+NEW_RELEASE_FOLDER +'.env '+RPi_HOME_FOLDER)
       Log ('\r\n\r\nUpdating from revision ' + comforttanVer)
       dir_list = os.listdir(NEW_RELEASE_FOLDER)
       Log (dir_list)
       os.system('sudo rm '+NEW_RELEASE_FOLDER +'*')
-      os.system('sudo rm '+NEW_RELEASE_FOLDER +'.env')
       os.system('sudo rmdir '+NEW_RELEASE_FOLDER)
       os.system("sudo reboot")
   except:
@@ -727,7 +967,6 @@ def testNewVersion():
     try:
       Log ('Removing files')
       os.system('sudo rm '+NEW_RELEASE_FOLDER +'*')
-      os.system('sudo rm '+NEW_RELEASE_FOLDER +'.env')
     except:
       pass
     try:
@@ -1011,6 +1250,13 @@ async def machineControl():
   cabinStartIx = 0 # allows users to start more than one cabins at the same time.
   cabinStopIx = 0
   vendIx = 0
+  # nightly log-size reboot check (see "reboot if logfile becomes too large" in the loop)
+  REBOOT_WINDOW_START = datetime.time(2, 0)
+  REBOOT_WINDOW_END   = datetime.time(5, 0)
+  RC_SIZE_MAX         = 3000000   # r1.16: In idle mode with LogErrors = 1 we gather +250k /h (6M/d) - With LogErrors = 0 expect 60k/h (1M5/d) - r2.04 idle: appr 25k/h
+  nextRebootCheck     = 0.0       # time.monotonic() timestamp of next check
+  rebootCheckDoneDate = None      # date on which the check was completed
+  cabinBusyLogged     = False
   while True:
       if SIMULATION: sim_IO.updateGUI()
       await asyncio.sleep(.1)
@@ -1254,24 +1500,28 @@ async def machineControl():
 
 
       # reboot if logfile becomes too large
-      timeNow = datetime.datetime.now().strftime("%H%M%S")
-      if timeNow == '020000' or timeNow == '030000' : 
-          rcSize = os.path.getsize("/boot/rc_local.log")
-          rcSizeMax = 3000000         # r1.16: In idle mode with LogErrors = 1 we gather +250k /h (6M/d) - With LogErrors = 0 expect 60k/h (1M5/d) - r2.04 idle: appr 25k/h
-          if rcSize > rcSizeMax : 
-              Log ('Log file size: ' + str(rcSize))
-              Log ('Max log file size: ' + str(rcSizeMax))
-              # make sure all cabins are free  
-              allCabinsFree = True
-              CabinCnt = 0
-              while CabinCnt < CabinsInstalled:
-                  if (SESSIONSTATUS[CabinCnt]['sessionStatus'] != SESSION_STATUS_IDLE): allCabinsFree = False
-                  CabinCnt = CabinCnt + 1
-              if allCabinsFree == False :
-                  Log ('A cabin is in use - No reboot')
-              else :
-                  Log ('Log file exceeded max size - rebooting')
-                  os.system("sudo reboot")
+      # Checked once a minute inside the night window (not at an exact second, which the loop can skip),
+      # retried while a cabin is in use, and done at most once per night.
+      nowMono = time.monotonic()
+      if nowMono >= nextRebootCheck:
+          nextRebootCheck = nowMono + 60
+          now = datetime.datetime.now()
+          if (REBOOT_WINDOW_START <= now.time() < REBOOT_WINDOW_END
+                  and rebootCheckDoneDate != now.date()):
+              rcSize = os.path.getsize("/boot/rc_local.log")
+              if rcSize <= RC_SIZE_MAX:
+                  rebootCheckDoneDate = now.date()      # nothing to do tonight
+              else:
+                  allCabinsFree = all(SESSIONSTATUS[i]['sessionStatus'] == SESSION_STATUS_IDLE
+                                      for i in range(CabinsInstalled))
+                  if not allCabinsFree:
+                      if not cabinBusyLogged:
+                          Log('Log file size ' + str(rcSize) + ' > ' + str(RC_SIZE_MAX) + ' - cabin in use, will retry')
+                          cabinBusyLogged = True
+                  else:
+                      Log('Log file size ' + str(rcSize) + ' > ' + str(RC_SIZE_MAX) + ' - rebooting')
+                      rebootCheckDoneDate = now.date()
+                      os.system("sudo reboot")
 
 
       #log date change

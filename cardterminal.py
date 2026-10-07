@@ -21,7 +21,7 @@ except:
   SIMULATION = True
 
 
-PROGRAM_VERSION = '2.5'
+PROGRAM_VERSION = '2.6'
 
 TRANSACTION_SUCCEEDED = 0
 TRANSACTION_FAILED = 1
@@ -92,7 +92,7 @@ with open(RPi_HOME_FOLDER+'settings.ini') as json_file:
 	else: hostUrlExtension = "callback"
 	if 'logerrors' in data: LogErrors = data['logerrors']
 	else: LogErrors = False
-CALLBACK_URL = host + 'api/machine/' + id + '/' + hostUrlExtension
+CALLBACK_URL = host + 'api/v2/machine/' + id + '/' + hostUrlExtension
 
 
 

@@ -38,10 +38,10 @@ except:
   RPi_HOME_FOLDER = "./"
 
 
-comforttanVer = "2.26"            # release version for this program
+comforttanVer = "2.27"            # release version for this program
 pollcaVer = "2.4"                 # these are currently hardcoded
 pollca_v7Ver = "2026-07-16"       #
-cardterminalVer = "2.5"           #
+cardterminalVer = "2.6"           #
 if SIMULATION: kernelVer = "sim"  #
 else: kernelVer = "6.1"           #
 
@@ -121,7 +121,7 @@ with open(RPi_HOME_FOLDER+'settings.ini') as json_file:
     else: hostUrlExtension = "callback"
     if 'host' not in missingSettings:
       host = host.replace('api/machine/', '') #the remove 'api/machine/' (for backwards compatibility)
-      CALLBACK_URL = host + "api/machine/" + locationID + '/' + hostUrlExtension
+      CALLBACK_URL = host + "api/v2/machine/" + locationID + '/' + hostUrlExtension
     if 'logerrors' in data: LogErrors = data['logerrors']
     else: LogErrors = False
     if 'connectionString' in data and data['connectionString'].strip() != '': CONNECTION_STRING = data['connectionString'].strip()
@@ -775,7 +775,7 @@ async def  sendLogFiles(JSONcontent):
               file_dict = {'file': a_file}
               file_dict = {fileToUpload: a_file}
               global host
-              logURL = host + "api/mobile/receive-log/" + format(JSONcontent["object_id"]) + "/" + logType
+              logURL = host + "api/v2/receive-log/" + format(JSONcontent["object_id"]) + "/" + logType
               Log ('postback URL. '+logURL)
               timeoutVal = 60
               for attempt in range(10):

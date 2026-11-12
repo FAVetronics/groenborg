@@ -38,10 +38,10 @@ except:
   RPi_HOME_FOLDER = "./"
 
 
-comforttanVer = "2.27"            # release version for this program
+comforttanVer = "2.28"            # release version for this program
 pollcaVer = "2.4"                 # these are currently hardcoded
 pollca_v7Ver = "2026-07-16"       #
-cardterminalVer = "2.6"           #
+cardterminalVer = "2.7"           #
 if SIMULATION: kernelVer = "sim"  #
 else: kernelVer = "6.1"           #
 
@@ -357,6 +357,283 @@ def sdCardInfo():
     return ':'.join(parts)
 
 
+# ---------------------------------------------------------------------------
+# Extra diagnostics for the AllLogs.zip upload
+#
+# The app's own logs only cover the last 7-10 days and contain nothing about a
+# boot that never reached rc.local. The persistent journal, wtmp and the ext4
+# superblock do. Everything below is collected into the zip under boot/ (the
+# archive folder - nothing is written to the /boot partition).
+#
+# Each command runs with a timeout and its output is capped, so a slow or huge
+# journal can delay a log upload but never hang the app or blow up the zip.
+# ---------------------------------------------------------------------------
+
+START_HISTORY_FILE = RPi_HOME_FOLDER + 'starts.log'
+START_HISTORY_MAX_BYTES = 200 * 1024     # ~3000 starts; trimmed to half when exceeded
+
+DIAG_CMD_TIMEOUT_S = 60
+DIAG_MAX_BYTES_PER_FILE = 256 * 1024
+DIAG_PREVIOUS_BOOTS = 3                  # journal tail of boots -1 .. -3
+DIAG_BOOT_TAIL_LINES = 300
+
+# kernel messages worth seeing across boots: SD card, filesystems, power
+DIAG_KERNEL_PATTERNS = (
+    'mmc', 'mmcblk', 'EXT4-fs', 'FAT-fs', 'I/O error', 'Buffer I/O',
+    'voltage', 'Under-voltage', 'Undervoltage', 'watchdog', 'bcm2835-wdt',
+    'Kernel panic', 'Oops', 'BUG:', 'blocked for more than',
+)
+
+
+def _bootId():
+    try:
+        with open('/proc/sys/kernel/random/boot_id') as file:
+            return file.read().strip()
+    except:
+        return '-'
+
+
+def _uptimeS():
+    try:
+        with open('/proc/uptime') as file:
+            return file.read().split()[0]
+    except:
+        return '-'
+
+
+def recordStart():
+    # Append one line per start of comforttan.py to a file that is not rotated
+    # with the daily logs. boot_id ties the start to `journalctl --list-boots`.
+    # Never raises.
+    try:
+        line = (datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S') + '\t'
+                + 'rev ' + comforttanVer + '\t'
+                + 'boot_id ' + _bootId() + '\t'
+                + 'uptime_s ' + _uptimeS() + '\n')
+        try:
+            if os.path.getsize(START_HISTORY_FILE) > START_HISTORY_MAX_BYTES:
+                with open(START_HISTORY_FILE) as file:
+                    lines = file.readlines()
+                with open(START_HISTORY_FILE, 'w') as file:
+                    file.writelines(lines[len(lines) // 2:])
+        except OSError:
+            pass
+        with open(START_HISTORY_FILE, 'a') as file:
+            file.write(line)
+    except:
+        traceback.print_exc()
+
+
+def _startsFromLogs():
+    # Starts and updates found in the daily logs still on the card.
+    import re
+    rx = re.compile(r'(\d\d:\d\d:\d\d\.\d+)\t\s*(Starting comforttan\.py revision \S+|Updating from revision \S+)')
+    out = []
+    try:
+        names = sorted(os.listdir('Logs'))
+    except:
+        return ['(cannot list Logs/)']
+    for name in names:
+        m = re.match(r'Log(\d{4})(\d\d)(\d\d)\.log$', name)
+        if not m:
+            continue
+        try:
+            with open(os.path.join('Logs', name), errors='replace') as file:
+                text = file.read()
+        except:
+            out.append(name + ': unreadable')
+            continue
+        for hit in rx.finditer(text):
+            out.append(m.group(1) + '-' + m.group(2) + '-' + m.group(3) + ' ' + hit.group(1) + '\t' + hit.group(2))
+    return out
+
+
+def _cap(data):
+    if len(data) > DIAG_MAX_BYTES_PER_FILE:
+        return data[:DIAG_MAX_BYTES_PER_FILE] + b'\n... truncated at ' + str(DIAG_MAX_BYTES_PER_FILE).encode() + b' bytes\n'
+    return data
+
+
+def _run(cmd):
+    # Output of one command with a header line. Never raises.
+    if os.name != 'nt' and hasattr(os, 'geteuid') and os.geteuid() != 0:
+        cmd = ['sudo', '-n'] + cmd
+    head = '$ ' + ' '.join(cmd) + '\n'
+    try:
+        p = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                           timeout=DIAG_CMD_TIMEOUT_S)
+        return head.encode() + p.stdout + ('\n(rc=%d)\n\n' % p.returncode).encode()
+    except subprocess.TimeoutExpired:
+        return head.encode() + ('(timeout after %d s)\n\n' % DIAG_CMD_TIMEOUT_S).encode()
+    except Exception as e:
+        return head.encode() + ('(failed: %s)\n\n' % e).encode()
+
+
+def collectDiagnostics():
+    # {archive name: bytes}. Blocking - call it from an executor. Never raises.
+    diag = {}
+    t0 = time.monotonic()
+
+    # 1. When has comforttan.py been started
+    try:
+        txt = '# Starts recorded by comforttan.py itself (' + START_HISTORY_FILE + ', from rev 2.28)\n'
+        try:
+            with open(START_HISTORY_FILE, errors='replace') as file:
+                txt += file.read()
+        except OSError:
+            txt += '(no history file yet)\n'
+        txt += '\n# Starts and updates found in the daily logs still on the card (last 7-10 days)\n'
+        txt += '\n'.join(_startsFromLogs()) + '\n'
+        txt += '\n# This boot: boot_id ' + _bootId() + ', uptime_s ' + _uptimeS() + '\n'
+        diag['boot/comforttan_starts.txt'] = _cap(txt.encode())
+    except:
+        diag['boot/comforttan_starts.txt'] = traceback.format_exc().encode()
+
+    if SIMULATION:
+        return diag
+
+    # 2. Journal: which boots exist, and how each of the last few ended
+    diag['boot/journal_list_boots.txt'] = _cap(
+        _run(['journalctl', '--list-boots', '--no-pager'])
+        + _run(['journalctl', '--disk-usage'])
+        + _run(['ls', '-la', '/var/log/journal']))
+    for n in range(1, DIAG_PREVIOUS_BOOTS + 1):
+        diag['boot/journal_boot-%d_tail.txt' % n] = _cap(_run(
+            ['journalctl', '-b', '-%d' % n, '-n', str(DIAG_BOOT_TAIL_LINES),
+             '--no-pager', '-o', 'short-precise']))
+
+    # 3. rc.local starts and reboot commands across the whole journal
+    # (keep only boot separators, rc.local starts and reboot commands)
+    try:
+        raw = (_run(['journalctl', '-u', 'rc-local.service', '--no-pager', '-o', 'short-iso'])
+               + _run(['journalctl', '_COMM=sudo', '--no-pager', '-o', 'short-iso']))
+        keepRc = (b'-- Boot', b'Starting /etc/rc.local', b'COMMAND=/sbin/reboot', b'COMMAND=/usr/sbin/reboot')
+        keep = [l for l in raw.splitlines()
+                if l.startswith(b'$') or l.startswith(b'(') or any(k in l for k in keepRc)]
+        diag['boot/rc_local_service.txt'] = _cap(b'\n'.join(keep) + b'\n')
+    except:
+        diag['boot/rc_local_service.txt'] = traceback.format_exc().encode()
+
+    # 4. Kernel messages about SD card, filesystems, power, watchdog - last 30 days
+    try:
+        # not -k: `journalctl -k` implies -b, i.e. the current boot only
+        raw = _run(['journalctl', '_TRANSPORT=kernel', '--since', '-30d', '--no-pager', '-o', 'short-iso'])
+        keep = [l for l in raw.splitlines()
+                if l.startswith(b'$') or l.startswith(b'(') or l.startswith(b'-- ')
+                or any(p.encode() in l for p in DIAG_KERNEL_PATTERNS)]
+        diag['boot/kernel_events.txt'] = _cap(b'\n'.join(keep) + b'\n')
+    except:
+        diag['boot/kernel_events.txt'] = traceback.format_exc().encode()
+
+    # 5. Filesystem, power and shutdown records
+    diag['boot/system_state.txt'] = _cap(
+        _run(['last', '-x', '-F', '-n', '60'])
+        + _run(['tune2fs', '-l', '/dev/mmcblk0p2'])
+        + _run(['findmnt', '-o', 'TARGET,SOURCE,FSTYPE,OPTIONS'])
+        + _run(['df', '-k'])
+        + _run(['ls', '-la', '/boot'])
+        + _run(['vcgencmd', 'get_throttled'])
+        + _run(['uptime'])
+        + _run(['systemctl', '--version'])
+        + _run(['grep', '-i', 'watchdog', '/etc/systemd/system.conf']))
+
+    diag['boot/diag_info.txt'] = ('collected by comforttan.py rev %s in %.1f s\n'
+                                  % (comforttanVer, time.monotonic() - t0)).encode()
+    return diag
+
+
+# ---------------------------------------------------------------------------
+# Shutdown watchdog
+#
+# Units were set up with ShutdownWatchdogSec=5min. The BCM2835 watchdog cannot
+# do that: its hardware maximum is 0xfffff ticks of 1/65536 s, about 16 s
+# (drivers/watchdog/bcm2835_wdt.c, max_hw_heartbeat_ms). systemd's attempt fails
+# ("Failed to set timeout to 300s: Invalid argument" at every shutdown), and
+# systemd v247 then DISARMS the watchdog (src/core/main.c:
+# watchdog_close(r < 0)). From the start of a shutdown until the next boot
+# re-arms the runtime watchdog, nothing can reset a hung unit - only a power
+# cycle brings it back.
+#
+# 11 s is the value the runtime watchdog already uses, and the journal shows
+# the driver accepts it ("Set hardware watchdog to 11s").
+#
+# Rewrites the line once per unit, then `systemctl daemon-reload` so it takes
+# effect at once: in systemd v247 a reload re-parses system.conf
+# (src/core/main.c, MANAGER_RELOAD -> parse_configuration()), and the shutdown
+# path reads arg_reboot_watchdog only when the shutdown starts. No reboot is
+# forced here - a reboot is the one moment these units are known to fail.
+# ---------------------------------------------------------------------------
+
+SYSTEM_CONF = '/etc/systemd/system.conf'
+SHUTDOWN_WD_LINE = 'ShutdownWatchdogSec=11'
+
+
+def fixShutdownWatchdog():
+    # Make the active shutdown/reboot watchdog setting SHUTDOWN_WD_LINE.
+    # Idempotent, never raises. Returns True only when the file was rewritten.
+    try:
+        with open(SYSTEM_CONF) as file:
+            lines = file.read().split('\n')
+    except:
+        Log('shutdown WD: cannot read ' + SYSTEM_CONF + ' - leaving it alone')
+        return False
+
+    # Active (uncommented) lines that set it. ShutdownWatchdogSec is the old
+    # name of RebootWatchdogSec; systemd accepts both for the same setting.
+    keys = ('ShutdownWatchdogSec=', 'RebootWatchdogSec=')
+    active = [i for i, l in enumerate(lines) if l.strip().startswith(keys)]
+
+    if [lines[i].strip() for i in active] == [SHUTDOWN_WD_LINE]:
+        return False                                 # already correct
+
+    old = ', '.join(lines[i].strip() for i in active) or '(not set)'
+    if active:
+        lines[active[0]] = SHUTDOWN_WD_LINE
+        for i in reversed(active[1:]):
+            del lines[i]
+    else:
+        if lines and lines[-1] == '':
+            lines.insert(len(lines) - 1, SHUTDOWN_WD_LINE)
+        else:
+            lines.append(SHUTDOWN_WD_LINE)
+    new = '\n'.join(lines)
+
+    try:
+        with open('/tmp/system.conf.new', 'w') as file:
+            file.write(new)
+        os.system("sudo cp " + SYSTEM_CONF + " " + SYSTEM_CONF + ".bak")
+        rc = os.system("sudo cp /tmp/system.conf.new " + SYSTEM_CONF)
+        os.system("sudo chmod 644 " + SYSTEM_CONF)
+        os.system("sudo chown root:root " + SYSTEM_CONF)
+        try:
+            os.remove('/tmp/system.conf.new')
+        except:
+            pass
+    except:
+        traceback.print_exc()
+        rc = -1
+
+    try:
+        with open(SYSTEM_CONF) as file:
+            ok = (file.read() == new)
+    except:
+        ok = False
+    if rc != 0 or not ok:
+        Log('shutdown WD: update FAILED (rc=' + str(rc) + ') - restoring ' + SYSTEM_CONF + '.bak')
+        os.system("sudo cp " + SYSTEM_CONF + ".bak " + SYSTEM_CONF)
+        os.system("sudo chmod 644 " + SYSTEM_CONF)
+        os.system("sudo chown root:root " + SYSTEM_CONF)
+        return False
+
+    Log('shutdown WD: ' + old + ' -> ' + SHUTDOWN_WD_LINE + ' (backup: ' + SYSTEM_CONF + '.bak)')
+    rcReload = os.system("sudo systemctl daemon-reload")
+    if rcReload == 0:
+        Log('shutdown WD: systemd reloaded - active now, no reboot forced')
+    else:
+        Log('shutdown WD: daemon-reload FAILED (rc=' + str(rcReload) + ') - takes effect at the next boot')
+    return True
+
+
 def fixRcLocal():
     # Install the rename-based /etc/rc.local. Idempotent, never raises.
     # Returns True only when the file was actually rewritten by this call.
@@ -418,9 +695,16 @@ if SIMULATION == False:
         Log('setting up WD')
         os.system("sudo chmod 777 /etc/systemd/system.conf")
         os.system("sudo echo 'RuntimeWatchdogSec=11' >> /etc/systemd/system.conf")
-        os.system("sudo echo 'ShutdownWatchdogSec=5min' >> /etc/systemd/system.conf")
+        os.system("sudo echo '" + SHUTDOWN_WD_LINE + "' >> /etc/systemd/system.conf")
         os.system("sudo chmod 644 /etc/systemd/system.conf")
         os.system("sudo reboot")
+  except:
+    traceback.print_exc()
+
+  # Replace the 5min shutdown watchdog the driver rejects (see fixShutdownWatchdog).
+  # Idempotent: rewrites the file at most once, and forces no reboot.
+  try:
+    fixShutdownWatchdog()
   except:
     traceback.print_exc()
 
@@ -750,6 +1034,13 @@ async def  sendLogFiles(JSONcontent):
     logType = 'AllLogs'
     # Zip all logfiles
     Log('Zipping to '+filePathToUpload+fileToUpload+'...')
+    diag = {}
+    try:
+      # journalctl etc. can take a while on a large journal - keep the event loop running
+      diag = await asyncio.get_running_loop().run_in_executor(None, collectDiagnostics)
+    except:
+      Log('collectDiagnostics failed')
+      traceback.print_exc()
     try:
       with zipfile.ZipFile(filePathToUpload+fileToUpload, 'w', zipfile.ZIP_DEFLATED) as myzip:
         if not SIMULATION:
@@ -770,6 +1061,8 @@ async def  sendLogFiles(JSONcontent):
           for f in files:
             fn = os.path.join(dirpath, f)
             myzip.write(fn)
+        for arcname, data in diag.items():
+          myzip.writestr(arcname, data)
       try:
           with open(filePathToUpload + fileToUpload, "rb") as a_file:
               file_dict = {'file': a_file}
@@ -1029,6 +1322,7 @@ def machineInitHW():
 
     try:
       Log ('\r\n\r\n\r\nStarting comforttan.py revision ' + comforttanVer)
+      recordStart()
       Log ('Location ID: '+locationID)
       Log ('Callback URL: {0}'.format(CALLBACK_URL))
       Log ('\r\n\r\nInitializing hardware')
@@ -1327,7 +1621,7 @@ async def machineControl():
           timeStamp = '"timeStamp":"'+datetime.datetime.now().strftime(timeStampFormat)+'"'
           await sendLogMessage('{"property":"cardTerminalStatus","status": 1'+','+timeStamp+'}')
           try:
-              proc = subprocess.Popen(['python3', 'cardterminal.py', str(_amountToRequest), str(_card_transaction_id), _card_reference])
+              proc = subprocess.Popen(['python3', 'cardterminal.py', str(_amountToRequest), str(_card_transaction_id), _card_reference, CALLBACK_URL])
           except:
               Log ('Error running cardterminal.py');
           _amountToRequest = 0;

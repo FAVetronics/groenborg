@@ -1,5 +1,5 @@
-# invoke for test: python3 cardterminal.py amount Transaction_ID Reference
-# ex: python3 cardterminal.py 5678 726436429 sifhw9e7fh72fuaewfih283hf8hæaw
+# invoke for test: python3 cardterminal.py amount Transaction_ID Reference CallbackURL
+# ex: python3 cardterminal.py 5678 726436429 sifhw9e7fh72fuaewfih283hf8hæaw https://comforttanpay.com/api/v2/machine/32/callback
 # gets handle to com port from HW_IO
 
 
@@ -21,7 +21,7 @@ except:
   SIMULATION = True
 
 
-PROGRAM_VERSION = '2.6'
+PROGRAM_VERSION = '2.7'
 
 TRANSACTION_SUCCEEDED = 0
 TRANSACTION_FAILED = 1
@@ -63,6 +63,12 @@ _reference = ""
 if len(sys.argv) > 3:
 	_reference = sys.argv[3]
 
+if len(sys.argv) > 4 and sys.argv[4].strip() != "":
+	CALLBACK_URL = sys.argv[4].strip()
+else:
+	print('Missing CallbackURL argument - usage: cardterminal.py amount Transaction_ID Reference CallbackURL')
+	sys.exit(2)
+
 serialPort = HW_IO.getCardReaderPort()
 if serialPort == "none":
   print('No card terminal connected (CardReaderPort=none) - exiting cardterminal.py')
@@ -76,23 +82,6 @@ except:
 
 
 
-# Read ini file
-import json
-
-with open(RPi_HOME_FOLDER+'settings.ini') as json_file:
-	data = json.load(json_file)
-	if 'id' in data: id = data['id'].strip()
-	elif 'location' in data:  id = data['location'].strip()
-	elif 'lokation' in data:  id = data['lokation'].strip()
-	else:  id = "32"
-	if 'host' in data: host = data['host'].strip()
-	else: host = "https://comforttanpay.com/api/machine/"
-	host = host.replace('api/machine/', '') # Remove 'api/machine/' (for backwards compatibility)
-	if 'hosturlextension' in data: hostUrlExtension = data['hosturlextension'].strip()
-	else: hostUrlExtension = "callback"
-	if 'logerrors' in data: LogErrors = data['logerrors']
-	else: LogErrors = False
-CALLBACK_URL = host + 'api/v2/machine/' + id + '/' + hostUrlExtension
 
 
 

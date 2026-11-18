@@ -38,7 +38,7 @@ except:
   RPi_HOME_FOLDER = "./"
 
 
-comforttanVer = "2.28"            # release version for this program
+comforttanVer = "2.30"            # release version for this program
 pollcaVer = "2.4"                 # these are currently hardcoded
 pollca_v7Ver = "2026-07-16"       #
 cardterminalVer = "2.7"           #
@@ -376,12 +376,16 @@ DIAG_CMD_TIMEOUT_S = 60
 DIAG_MAX_BYTES_PER_FILE = 256 * 1024
 DIAG_PREVIOUS_BOOTS = 3                  # journal tail of boots -1 .. -3
 DIAG_BOOT_TAIL_LINES = 300
+DIAG_BOOT_ENDS = 15                      # boots in boot_ends.txt
+DIAG_BOOT_END_LINES = 25                 # lines per boot in boot_ends.txt
+PSTORE_MAX_BYTES = 512 * 1024
 
 # kernel messages worth seeing across boots: SD card, filesystems, power
 DIAG_KERNEL_PATTERNS = (
     'mmc', 'mmcblk', 'EXT4-fs', 'FAT-fs', 'I/O error', 'Buffer I/O',
     'voltage', 'Under-voltage', 'Undervoltage', 'watchdog', 'bcm2835-wdt',
     'Kernel panic', 'Oops', 'BUG:', 'blocked for more than',
+    'pstore', 'ramoops',
 )
 
 
@@ -502,6 +506,45 @@ def collectDiagnostics():
             ['journalctl', '-b', '-%d' % n, '-n', str(DIAG_BOOT_TAIL_LINES),
              '--no-pager', '-o', 'short-precise']))
 
+    # 2b. How each of the last DIAG_BOOT_ENDS boots ended: "Journal stopped"
+    # after systemd-shutdown = completed shutdown; anything else = the boot
+    # stopped (power cut or hang). NB: timestamps before "Initial
+    # synchronization to time server" are the clock saved at the previous
+    # shutdown, not real time.
+    try:
+        import re
+        lb = _run(['journalctl', '--list-boots', '--no-pager'])
+        ids = re.findall(rb'^\s*(-?\d+)\s+([0-9a-f]{32})\s', lb, re.M)
+        ids = [(int(n), bid.decode()) for n, bid in ids if int(n) != 0][-DIAG_BOOT_ENDS:]
+        out = b''
+        for n, bid in ids:
+            out += ('=== boot %d  %s\n' % (n, bid)).encode()
+            out += _run(['journalctl', '-b', bid, '-n', str(DIAG_BOOT_END_LINES),
+                         '--no-pager', '-o', 'short-precise'])
+        diag['boot/boot_ends.txt'] = _cap(out)
+    except:
+        diag['boot/boot_ends.txt'] = traceback.format_exc().encode()
+
+    # 2c. pstore / ramoops: the kernel console of the previous boot, kept in
+    # RAM across a warm reset (watchdog or software reboot), not a power cut.
+    # systemd-pstore may already have moved it to /var/lib/systemd/pstore.
+    try:
+        out = (_run(['ls', '-laR', '/sys/fs/pstore', '/var/lib/systemd/pstore'])
+               + _run(['cat', '/proc/sys/kernel/printk']))
+        for root in ('/sys/fs/pstore', '/var/lib/systemd/pstore'):
+            for dirpath, dirs, files in os.walk(root):
+                for f in sorted(files):
+                    fn = os.path.join(dirpath, f)
+                    try:
+                        with open(fn, 'rb') as file:
+                            data = file.read(DIAG_MAX_BYTES_PER_FILE)
+                        out += ('\n===== %s (%d bytes shown)\n' % (fn, len(data))).encode() + data + b'\n'
+                    except Exception as e:
+                        out += ('\n===== %s unreadable: %s\n' % (fn, e)).encode()
+        diag['boot/pstore.txt'] = out[-PSTORE_MAX_BYTES:] if len(out) > PSTORE_MAX_BYTES else out
+    except:
+        diag['boot/pstore.txt'] = traceback.format_exc().encode()
+
     # 3. rc.local starts and reboot commands across the whole journal
     # (keep only boot separators, rc.local starts and reboot commands)
     try:
@@ -534,6 +577,9 @@ def collectDiagnostics():
         + _run(['ls', '-la', '/boot'])
         + _run(['vcgencmd', 'get_throttled'])
         + _run(['uptime'])
+        + _run(['cat', '/proc/cmdline'])
+        + _run(['grep', '-n', '-i', 'ramoops\\|^\\[', '/boot/config.txt'])
+        + _run(['ls', '-la', '/boot/overlays/ramoops.dtbo'])
         + _run(['systemctl', '--version'])
         + _run(['grep', '-i', 'watchdog', '/etc/systemd/system.conf']))
 
@@ -634,6 +680,146 @@ def fixShutdownWatchdog():
     return True
 
 
+# ---------------------------------------------------------------------------
+# ramoops: keep the kernel console of the previous boot in RAM
+#
+# A unit that hangs during a reboot leaves nothing on the SD card (12 Nov,
+# location 128: no journal entry between `sudo reboot` and the power cycle).
+# With the 11 s shutdown watchdog a hang now ends in a watchdog reset, and RAM
+# survives that. The Pi 6.1 kernel has CONFIG_PSTORE_RAM=y and
+# CONFIG_PSTORE_CONSOLE=y, and the firmware has a `ramoops` overlay; with
+# console-size > 0 the next boot finds the previous boot's console in
+# /sys/fs/pstore. It does NOT survive a power cut.
+#
+# Layout: 128 kB at the overlay's default 0x0b000000 = 64 kB console +
+# 4 x 16 kB panic records.
+#
+# config.txt is read by the firmware at boot, so this takes effect at the next
+# boot. The edit is written to config.txt.new, checked, then renamed over
+# config.txt - a full /boot can never leave a truncated config.txt.
+# ---------------------------------------------------------------------------
+
+BOOT_CONFIG = '/boot/config.txt'
+RAMOOPS_OVERLAY = '/boot/overlays/ramoops.dtbo'
+RAMOOPS_MARKER = '# comforttan: ramoops'
+RAMOOPS_LINE = 'dtoverlay=ramoops,total-size=0x20000,record-size=0x4000,console-size=0x10000'
+
+
+def fixRamoops():
+    # Idempotent, never raises. Returns True only when config.txt was rewritten.
+    try:
+        if not os.path.exists(RAMOOPS_OVERLAY):
+            Log('ramoops: ' + RAMOOPS_OVERLAY + ' not found - config.txt left alone')
+            return False
+        with open(BOOT_CONFIG) as file:
+            current = file.read()
+    except:
+        Log('ramoops: cannot read ' + BOOT_CONFIG + ' - leaving it alone')
+        return False
+
+    for line in current.split('\n'):
+        if line.strip().startswith('dtoverlay=ramoops'):
+            return False                     # already there
+
+    # [all] so the line is not caught by a [pi4]/[cm4]-style section above it
+    new = current
+    if new and not new.endswith('\n'):
+        new += '\n'
+    new += '\n[all]\n' + RAMOOPS_MARKER + '\n' + RAMOOPS_LINE + '\n'
+
+    try:
+        with open('/tmp/config.txt.new', 'w') as file:
+            file.write(new)
+        os.system('sudo cp ' + BOOT_CONFIG + ' ' + BOOT_CONFIG + '.bak')
+        rc = os.system('sudo cp /tmp/config.txt.new ' + BOOT_CONFIG + '.new')
+        os.system('sync')
+        try:
+            with open(BOOT_CONFIG + '.new') as file:
+                ok = (file.read() == new)
+        except:
+            ok = False
+        if rc != 0 or not ok:
+            Log('ramoops: writing ' + BOOT_CONFIG + '.new FAILED (rc=' + str(rc) + ') - config.txt left alone')
+            os.system('sudo rm -f ' + BOOT_CONFIG + '.new')
+            return False
+        rc = os.system('sudo mv -f ' + BOOT_CONFIG + '.new ' + BOOT_CONFIG)
+        os.system('sync')
+        try:
+            os.remove('/tmp/config.txt.new')
+        except:
+            pass
+        with open(BOOT_CONFIG) as file:
+            ok = (file.read() == new)
+        if rc != 0 or not ok:
+            Log('ramoops: rename FAILED (rc=' + str(rc) + ') - restoring ' + BOOT_CONFIG + '.bak')
+            os.system('sudo cp ' + BOOT_CONFIG + '.bak ' + BOOT_CONFIG)
+            os.system('sync')
+            return False
+    except:
+        traceback.print_exc()
+        return False
+    Log('ramoops: added "' + RAMOOPS_LINE + '" to ' + BOOT_CONFIG + ' (backup: ' + BOOT_CONFIG + '.bak)')
+    Log('ramoops: takes effect at the next boot - no reboot forced here')
+    return True
+
+
+def setConsoleLogLevel():
+    # Let every kernel/systemd message reach the consoles - pstore included -
+    # for the rest of this boot, so a hang during shutdown is captured in full.
+    # "quiet" on the kernel command line otherwise keeps it at warnings only.
+    try:
+        with open('/proc/sys/kernel/printk') as file:
+            before = file.read().split()
+        rc = os.system("sudo sh -c 'echo 8 > /proc/sys/kernel/printk'")
+        with open('/proc/sys/kernel/printk') as file:
+            after = file.read().split()
+        Log('console loglevel: ' + ' '.join(before) + ' -> ' + ' '.join(after) + ' (rc=' + str(rc) + ')')
+    except:
+        traceback.print_exc()
+
+
+# ---------------------------------------------------------------------------
+# Install a release without rebooting
+#
+# Both known field cases where a unit did not come back (Herning 14 Sep,
+# location 128 12 Nov) followed `sudo reboot` right after a release. From 2.29
+# a release is installed by restarting comforttan.py in place (exec) instead.
+#
+# The backend still sends "reboot" after a successful upload. While a release
+# is waiting in newRel/, that message installs it by restart instead. The
+# expirationTime of that message is passed to the new process, which ignores
+# the same message if IoT Hub delivers it again.
+# ---------------------------------------------------------------------------
+
+APPLIED_REBOOT_ENV = 'COMFORTTAN_APPLIED_REBOOT'
+
+
+def restartApp(reason, rebootMsgExpiration=''):
+    # Replace this process with a fresh comforttan.py. Does not return.
+    # Falls back to the old `sudo reboot` if exec fails.
+    Log('Restarting comforttan.py in place (' + reason + ') - no reboot')
+    if SIMULATION:
+        Log('SIMULATION: restart skipped')
+        return
+    # stop helpers the old process started, as a reboot would have
+    for pattern in ('cardterminal.py', 'pollca_v7', 'pollca'):
+        os.system("sudo pkill -f '" + pattern + "'")
+    env = dict(os.environ)
+    if rebootMsgExpiration:
+        env[APPLIED_REBOOT_ENV] = rebootMsgExpiration
+    try:
+        sys.stdout.flush()
+        sys.stderr.flush()
+    except:
+        pass
+    try:
+        os.execve(sys.executable, [sys.executable] + sys.argv, env)
+    except:
+        traceback.print_exc()
+        Log('Restart in place FAILED - rebooting instead')
+        os.system("sudo reboot")
+
+
 def fixRcLocal():
     # Install the rename-based /etc/rc.local. Idempotent, never raises.
     # Returns True only when the file was actually rewritten by this call.
@@ -707,6 +893,14 @@ if SIMULATION == False:
     fixShutdownWatchdog()
   except:
     traceback.print_exc()
+
+  # Keep the previous boot's kernel console across a warm reset (see fixRamoops).
+  # Idempotent: edits config.txt at most once, and forces no reboot.
+  try:
+    fixRamoops()
+  except:
+    traceback.print_exc()
+  setConsoleLogLevel()
 
   # Make sure a full /boot can never stop rc.local before the app starts.
   # Idempotent: rewrites the file at most once, and forces no reboot.
@@ -1245,7 +1439,7 @@ async def checkTanningTime():
       
 
 
-def testNewVersion():
+def testNewVersion(rebootMsgExpiration=''):
   try:
     if os.path.exists(NEW_RELEASE_FOLDER):
       os.system('sudo cp '+NEW_RELEASE_FOLDER +'* '+RPi_HOME_FOLDER)
@@ -1254,7 +1448,7 @@ def testNewVersion():
       Log (dir_list)
       os.system('sudo rm '+NEW_RELEASE_FOLDER +'*')
       os.system('sudo rmdir '+NEW_RELEASE_FOLDER)
-      os.system("sudo reboot")
+      restartApp('new release installed', rebootMsgExpiration)
   except:
     traceback.print_exc()
     try:
@@ -1888,8 +2082,15 @@ async def receive_c2d_messages(message):
       elif JSONcontent["property"] == "settings":
         await changeSettings(JSONcontent)
       elif JSONcontent["property"] == "reboot":
-        Log("Reboot from backend")
-        os.system("sudo reboot")
+        _exp = str(JSONcontent.get('expirationTime', ''))
+        if _exp and _exp == os.environ.get(APPLIED_REBOOT_ENV, ''):
+          Log("Reboot from backend ignored - same message already installed the release")
+        elif os.path.exists(NEW_RELEASE_FOLDER):
+          Log("Reboot from backend - release waiting in " + NEW_RELEASE_FOLDER + ": installing without reboot")
+          testNewVersion(_exp)
+        else:
+          Log("Reboot from backend")
+          os.system("sudo reboot")
       else:
         Log("Unknown property: "+JSONcontent["property"])
         #TODO send a reply for UnknownProperty

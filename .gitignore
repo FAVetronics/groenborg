@@ -19,3 +19,6 @@ whlib 0.1.4.0/mdbcashless/
 whlib 0.1.4.0/pollbv/
 /pollca_v7
 starts.log
+/sd_*/
+*.img
+*.img.errors.txt
